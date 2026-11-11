@@ -532,6 +532,8 @@ Planned: export = `JSON.stringify(config)` (+ fault, fault spec and scenario) â†
 
 ## Deployment
 
+**GitHub Pages (2026-11-11):** `.github/workflows/pages.yml` runs the tests, builds with `VITE_BASE=/line-protection-sim/` (Vite `base`; default `/` for dev and Docker) and deploys `app/dist` to https://powerjc.github.io/line-protection-sim/ on every push to the GitHub `main`. Chosen because `github.io` is an established, categorized domain that corporate web proxies are more likely to allow than a new personal domain. Verified locally: a sub-path build served under `/line-protection-sim/` loads with no failed requests.
+
 **Architecture:** static app (Vite build â†’ `app/dist/`: HTML + JS + CSS). No backend; every visitor's state lives in their own browser tab. Never expose the Vite dev server publicly.
 
 **Without Docker:** `app/deploy.sh <ssh-host> [web-root]` builds and rsyncs `dist/` to a web root served by the host's nginx (see the comment at the end of `app/deploy/nginx-host.conf.example`).

@@ -2,6 +2,8 @@
 
 An interactive, browser-based training simulator for transmission line protection: distance zones and coordination, pilot schemes, and line current differential. Place a fault, step through the clearing sequence event by event, and see why each relay did (or didn't) trip.
 
+**Try it:** https://powerjc.github.io/line-protection-sim/
+
 ![Coordination view: one-line, zone coverage, timing chart and sequence of events](docs/coordination.png)
 
 ## What it covers
@@ -36,7 +38,7 @@ All simulation runs in the browser; there is no backend. The simulation code (`a
 
 ## Deploy
 
-The production build is a static site. A Docker setup is included: `docker compose up -d --build` serves it from an unprivileged nginx container on `127.0.0.1:8080`, meant to sit behind a reverse proxy that handles TLS (example vhost in `app/deploy/nginx-host.conf.example`). See `SPEC.md` § Deployment.
+The production build is a static site. **GitHub Pages:** `.github/workflows/pages.yml` builds and publishes it on every push to `main` (the repo needs Settings → Pages → Source: "GitHub Actions"); it sets `VITE_BASE=/line-protection-sim/` because Pages serves the project under that path. **Docker:** `docker compose up -d --build` serves it from an unprivileged nginx container on `127.0.0.1:8080`, meant to sit behind a reverse proxy that handles TLS (example vhost in `app/deploy/nginx-host.conf.example`). See `SPEC.md` § Deployment.
 
 ## Model notes and limits
 
