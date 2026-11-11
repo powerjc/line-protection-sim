@@ -1,0 +1,23 @@
+# Line Protection Simulator — static app in a hardened nginx container,
+# served on 127.0.0.1:8080 for the host's nginx to proxy (TLS + optional
+# basic auth live there: app/deploy/nginx-host.conf.example).
+#   IMAGE_TAG=$(git rev-parse --short HEAD) docker compose up -d --build
+# Update: git pull, then the same command.
+services:
+  web:
+    build: ./app
+    image: line-protection-sim:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp # nginx pid + temp files (unprivileged image keeps them here)
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - ${BIND:-127.0.0.1:8080}:8080
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
