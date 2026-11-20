@@ -1,5 +1,7 @@
 // RelayConfig schema — serializable for future import/export.
 //
+// v14: bus differential (87B) module: `busdiff` settings and the 'busdiff' feature.
+// v13: Foundations module (bay view, instrument faults): the 'foundations' feature.
 // v12: unprotected load tap on line A–B (`network.lines[AB].tap`: position,
 //      tap section, tap transformer, load, tap protection time) and the 'tap' feature.
 // v11: consequences module: `consequences` settings (critical clearing time,
@@ -40,12 +42,13 @@ const defaultZones = () => [
 
 export const BASE_LINE = 'AB'
 
-const DEFAULT_FEATURES = { pilot: false, adjacent: false, sir: false, ground: false, rf: false, infeed: false, load: false, diff: false, consequences: false, tap: false }
+const DEFAULT_FEATURES = { pilot: false, adjacent: false, sir: false, ground: false, rf: false, infeed: false, load: false, diff: false, consequences: false, tap: false, foundations: false, busdiff: false }
 // Unprotected load tap on line A–B (feature 'tap'). Illustrative values, pu of line A–B:
 // at = position from A (fraction), lead = tap section impedance, zt = tap transformer
 // impedance, load = load current at nominal voltage, clearCycles = tap transformer
 // protection clearing time for faults on the tap's low-voltage bus.
 export const DEFAULT_TAP = { at: 0.4, lead: 0.2, zt: 2.0, load: 0.1, clearCycles: 6 }
+const DEFAULT_BUSDIFF = { pickupPu: 0.2, slopePct: 50 } // = busdiff.js DEFAULT_BUSDIFF (bus B, low-impedance percentage)
 const DEFAULT_CONSEQUENCES = { cctCycles: 12 } // critical clearing time — illustrative; system-specific in practice (stability study)
 const DEFAULT_DIFF_SETTINGS = { pickupPu: 0.3, slopePct: 30, chargingPu: 0.05, ctErrorPct: 0 } // = differential.js DEFAULT_DIFF
 const DEFAULT_PILOT = {
@@ -56,7 +59,7 @@ const DEFAULT_PILOT = {
 const DEFAULT_SCHEMES = { XA: 'step', AB: 'DCB', BY: 'step' }
 
 export const DEFAULT_CONFIG = {
-  version: 12,
+  version: 14,
   lineAngleDeg: 75,
   loadAngleDeg: 20, // prefault power-transfer angle (with the 'load' feature)
   features: DEFAULT_FEATURES,
@@ -70,6 +73,7 @@ export const DEFAULT_CONFIG = {
   consequences: DEFAULT_CONSEQUENCES,
   schemes: DEFAULT_SCHEMES, // per line id
   diff: DEFAULT_DIFF_SETTINGS, // line A–B current differential
+  busdiff: DEFAULT_BUSDIFF, // bus B differential (87B)
   network: {
     buses: [
       { id: 'X', source: true, sir: 0, z0Ratio: 1 },
@@ -97,10 +101,10 @@ export function defaultConfig() {
   return structuredClone(DEFAULT_CONFIG)
 }
 
-// Accept any known schema version and return a current (v12) config.
+// Accept any known schema version and return a current (v14) config.
 // Each step upgrades one version, so old files walk forward in order.
 export function migrateConfig(cfg) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(cfg.version)) throw new Error(`Unsupported config version: ${cfg.version}`)
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(cfg.version)) throw new Error(`Unsupported config version: ${cfg.version}`)
   let next = cfg
   if (next.version === 1) next = v1to3(next)
   if (next.version === 2) next = v2to3(next)
@@ -113,6 +117,8 @@ export function migrateConfig(cfg) {
   if (next.version === 9) next = v9to10(next)
   if (next.version === 10) next = v10to11(next)
   if (next.version === 11) next = v11to12(next)
+  if (next.version === 12) next = v12to13(next)
+  if (next.version === 13) next = v13to14(next)
   return next
 }
 
@@ -229,6 +235,21 @@ function v11to12(cfg) {
   next.network.lines = next.network.lines.map(l => (l.id === BASE_LINE ? { ...l, tap: { ...DEFAULT_TAP, ...l.tap } } : l))
   next.features = { ...DEFAULT_FEATURES, ...next.features }
   next.version = 12
+  return next
+}
+
+function v12to13(cfg) {
+  const next = structuredClone(cfg)
+  next.features = { ...DEFAULT_FEATURES, ...next.features }
+  next.version = 13
+  return next
+}
+
+function v13to14(cfg) {
+  const next = structuredClone(cfg)
+  next.features = { ...DEFAULT_FEATURES, ...next.features }
+  next.busdiff = { ...DEFAULT_BUSDIFF, ...next.busdiff }
+  next.version = 14
   return next
 }
 

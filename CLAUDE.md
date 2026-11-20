@@ -8,20 +8,23 @@ Pure simulation logic lives in `app/src/lib/` (no React — keep it that way so 
 
 | File | Role |
 |------|------|
-| `schema.js` | Config schema (v12), defaults, `migrateConfig()` (v1→v12, one step per version), `coordinationConfig()` (single-line A–B unless the adjacent-lines feature is on), `withInfeed()` (A/B become sources with the infeed feature; also applied by the Fault Study) |
+| `schema.js` | Config schema (v14), defaults, `migrateConfig()` (v1→v14, one step per version), `coordinationConfig()` (single-line A–B unless the adjacent-lines feature is on), `withInfeed()` (A/B become sources with the infeed feature; also applied by the Fault Study) |
 | `network.js` | Chain topology: positions (cumulative pu), relay geometry/direction, `activeTap()` (the line tap, feature `tap`), fault position (tap faults sit at T) (geometry is used for layout and assessment ground truth, not for measurement) |
 | `solver.js`, `complex.js` | V2 phasor solver (`solveFault`): three-phase nodal analysis, optional prefault load (source angles; fault component = total − healthy network with same breakers, used for carrying / phase selection / live sources; memory = prefault V; `Zload`), (balanced elements from Z1/Z0), source SIR, 3Ø / A–G faults with Rf, breaker states → per-relay V/I, phase selection + loop measurement (ground loops with k0), memory-polarized direction, live sources, fault current. `faultSpec()` gates fault type/Rf by feature |
+| `instruments.js` | Instrument layer between the solver and each relay (Foundations module): CT polarity, ratio-setting error, VT fuse as scenario entries (`instrumentFaults()` gates them); identity when ideal. Typical display base for the Bay tab (`BAY_BASE`: 138 kV, line A–B = 20 Ω) and `bayQuantities` (primary / secondary / relay-computed) |
+| `waveforms.js` | Bay-tab oscillography: instantaneous waves synthesized from each event's phasors (`buildTrace`, `valueAt`), DC offset at inception (τ from the line X/R), poles interrupting at current zeros, 16 samples/cycle and a full-cycle DFT estimate (`dftAt`). Illustrative; display only, never feeds the engine |
 | `protection.js` | MHO comparator, quadrilateral (`quadContains`/`quadPolygon`, `relayShape` gating), zone assertion on the measured Z + direction (`zoneAsserts`, forward + reverse), `activeZones()` (feature gating), static `assessRelay()` |
 | `timeline.js` | Discrete-event fault-clearing engine (`simulateFault`): pickups, timers, trips, breakers, phasor re-solve after each opening, pilot schemes (keying, channel, DCB timer, DCUB unblock), 87L on A–B (feature `diff`), outcome verdict. Emits events, each with a full state snapshot |
 | `study.js` | Fault Study runner (static assessment + pilot time-domain result) |
 | `coordination.js` | Static setting checks drawn as red hatching (Z1 overreach, Z2 race < CTI, DCB reverse-reach gap) |
 | `differential.js` | Line current differential (87L) on A–B: per-phase percentage differential from solver currents, charging current, CT error; `runDifferential` for the Differential tab |
+| `busdiff.js` | Bus differential (87B) on bus B: `busZone()` (module + adjacent lines, B not a source), `busDiffElement()` (Σ I into the bus from line-side CTs, `bus:<rid>` instruments) |
 | `consequences.js` | What a run cost: fault time vs critical clearing time, relative fault duty (∫I²dt) and arc energy (∫I dt) vs a fast clear, outage extent (`costsAt`, `outageExtent`) |
 | `levels.js` | Learner levels (feature groups), track → level labels, per-browser level / welcome prefs |
 | `lessons.js` | Lesson content (data) |
 | `faults.js`, `units.js`, `colors.js` | F1–F6 suite; cycles/seconds display; per-relay colors |
 
-Data flow: `useSimulation` (config + Fault Study) → `coordinationConfig(config)` → `useCoordination` (fault, failures, playback; lives in `App` so lessons can drive it) → `simulateFault` → events/snapshots → `CoordinationDiagram` (one-line + coverage lanes), `TimingChart` (logic-analyzer), `EventLog`, `PhasorPanel` (V/I per relay from `state.meas`; only with the `sir` feature on). Coordination is the default tab.
+Data flow: `useSimulation` (config + Fault Study) → `coordinationConfig(config)` → `useCoordination` (fault, failures, playback; lives in `App` so lessons can drive it) → `simulateFault` → events/snapshots → `CoordinationDiagram` (one-line + coverage lanes), `TimingChart` (logic-analyzer), `EventLog`, `PhasorPanel` (V/I per relay from `state.meas`; only with the `sir` feature on). The Bay tab (`BayView`, feature `foundations`) shows one terminal of the same `useCoordination` run: `BayDiagram`, `RelayView`, `Oscillography`, `ChainView`; with 87B, also `BusDiffCard` and a bus view (`bus:B` in the terminal picker: `BusDiagram`, bus-mode `Oscillography`). Coordination is the default tab.
 
 ## Conventions
 
@@ -29,10 +32,10 @@ Data flow: `useSimulation` (config + Fault Study) → `coordinationConfig(config
 - **Relay ids** `<own bus><far bus>` (`AB` = at A looking to B); breaker shares the id (`52-AB`)
 - **Schema changes:** bump `version`, add a migration step, add a migration test
 - **Progressive disclosure:** new features go behind `config.features.*` toggles in ⚙ Settings; gate them centrally (`activeZones`, `coordinationConfig`) rather than in each component. With a feature off the app must behave exactly as before
-- **Engine invariants:** zone assertion stays separate from trip decisions (schemes sit between); every state change is logged as an event with a snapshot; a breaker-open event's snapshot is refreshed after the network re-solve; `events[0]` is the prefault event (t < 0), the fault is at t = 0 (find it by `kind === 'fault'`)
+- **Engine invariants:** zone assertion stays separate from trip decisions (schemes sit between); every state change is logged as an event with a snapshot; a breaker-open event's snapshot is refreshed after the network re-solve; `events[0]` is the prefault event (t < 0), the fault is at t = 0 (find it by `kind === 'fault'`). With `loc = { kind: 'none' }` (Foundations) there is no power-system fault: that t = 0 event marks the instrument failure instead, and the verdict is `secure` or `misoperation`
 - **Fault spec:** fault type + Rf (`{ type: '3PH' | 'AG', rf }`) travel separately from the location: `simulateFault(config, loc, scenario, spec)`, `runSimulation(…, spec)`, lesson `faultSpec`
-- **Lessons:** every Coordination lesson declares `expect.verdict`; tests run all lessons. If a lesson's text claims a "try this" outcome, add a spot-check test
-- **Measurement:** relays see only what the solver gives them (V, I at their CT). Don't reintroduce geometric shortcuts for zone assertion; geometry (`fwd`) is for display text and the assessment's ground truth
+- **Lessons:** every Coordination and Bay lesson declares `expect.verdict` (Bay lessons also `expect.measured`); tests run all lessons. If a lesson's text claims a "try this" outcome, add a spot-check test
+- **Measurement:** relays see only what their instruments give them (the solver's V, I at their CT/VT, through `instruments.js`; `meas.prim` keeps the primary truth). Don't reintroduce geometric shortcuts for zone assertion; geometry (`fwd`) is for display text and the assessment's ground truth
 - Line A–B is the fixed 1.0 pu base; F6 needs line BY, so the Fault Study always uses the full network
 
 ## Verifying changes

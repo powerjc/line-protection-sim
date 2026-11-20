@@ -10,19 +10,23 @@ The sections after § Status are the design record, written as each version was 
 ## Status & backlog (as of 2026-10-29)
 
 **Built**
+- **Bus differential module** (V6 step 1, built 2026-11-19): 87B on bus B with line-side CTs (overlapping the line zones), bus-CT polarity faults, 2 lessons
+- **Foundations module** (V5, built 2026-11-19, phases 1–4): instrument layer in the engine (CT polarity, ratio-setting error, VT fuse); Bay tab with the bay one-line, *What the relay sees* table, oscillography (synthesized event report: primary, secondary, samples, one-cycle DFT, digital) and the protection chain (moved from Coordination when the module is on); *Foundations* track (8 lessons), loss of potential (no-fault runs, LOP blocking), offered from the welcome card
 - **Coordination tab** (default): one-line with breakers, CTs and fault-current paths; zone coverage lanes with static setting checks; logic-analyzer timing chart; sequence of events; outcome verdict; 3-cycle prefault period; failure scenarios (relay out of service, stuck breaker, channel failures); sidebar with labelled fault presets and Z1/Z2 reach controls
 - **Fault Study tab:** six-fault suite against Relay A/B, R-X plane (MHO or quadrilateral, load point), results table
 - **Differential tab:** line A–B 87L, Iop–Ires characteristic, charging current, CT error
 - **Engine:** three-phase phasor network solver (Z1/Z0, source SIR, infeed, prefault load, 3Ø / A–G faults with Rf); relays measure V/I through a phase selector and ground (k0) / phase loops with memory polarization; discrete-event clearing with pilot schemes (DCB, POTT, DCUB) and 87L
 - **Progressive disclosure:** eight ⚙ feature toggles, all off by default; with a feature off the app behaves exactly as before it existed. Learner levels (Basic / Intermediate / Advanced) switch the seven distance features in groups; 87L is a separate module toggle (built 2026-11-11)
 - **First run:** welcome card on the Coordination tab (how to read the screen, level picker, first lesson for the level); reopen from Lessons (built 2026-11-11)
-- **Lessons:** 31 in eight tracks; every Coordination lesson's outcome and every "Try this" claim is checked by the test suite
+- **Lessons:** 41 in ten tracks; every Coordination and Bay lesson's outcome (and a Bay lesson's measured Z and direction) and every "Try this" claim is checked by the test suite
 - **Consequences module** (V3 § A, built 2026-11-11): ⚙ Modules → Consequences; a card beside the outcome fills in during playback: fault time vs critical clearing time (12 cyc, illustrative), relative fault duty and arc energy, outage extent
 - **Line tap** (V4 step 1, built 2026-11-11): unprotected load tap on A–B (Advanced level); tap-section and tap LV-bus faults, tap transformer protection, true vs measured distance on the coverage lanes; *Tapped lines* track
-- **Quality:** config schema v12 with migrations from v1; 130 Vitest tests
+- **Quality:** config schema v14 with migrations from v1; 167 Vitest tests
 - **Deploy:** Docker image (unprivileged nginx) behind the host's nginx, verified locally (§ Deployment)
 
-**Next: V3, protection for the people around it** (design draft, § Roadmap → V3): consequences panel, protection chain view, the channel as a protection setting (latency, 87L asymmetry), digital substation (SV/GOOSE links).
+**Next: V5, Foundations: the relay's view** (design draft 2026-11-19, § Roadmap → V5): an instrument layer between the solver and the relays; a Bay tab (bay one-line with the chain view moved in, plus oscillography: primary, secondary, sampled, measured); lessons 0.1–0.8. Saturation comes later.
+
+**Then: V3, protection for the people around it** (design draft, § Roadmap → V3): consequences panel, protection chain view, the channel as a protection setting (latency, 87L asymmetry), digital substation (SV/GOOSE links).
 
 **Before / during audience testing**
 - **Complexity: simplify, separate, or guide** (raised 2026-11-11). The Coordination tab now carries a one-line, zone coverage, timing chart, sequence of events, outcome, consequences card, protection chain, phasors and settings. Options, cheapest first:
@@ -494,6 +498,131 @@ What changes from step 2: a breaker and relays at T, so the line has three termi
 - Tap position and sizes as fixed lesson presets only, or user settings (position slider, transformer Z, load)? Default for now: lesson presets plus a position slider.
 - Tap transformer protection as a fixed clearing time (fuse-like) or a small time-overcurrent curve?
 - Fault Study tab: add the tap LV-bus fault to the six-fault suite, or keep the suite fixed and use Coordination only?
+
+---
+
+### V5 — Foundations: the relay's view (design draft 2026-11-19)
+
+**Why.** Every lesson so far starts at the relay. Learners who are new to protection, and people who work around it, first need the step before that: **the relay cannot see the line**. It sees only what the instrument transformers, wiring (later: the network) and status contacts deliver, and it builds its picture of the power system from those inputs. Foundations teaches that chain *before* any more protection schemes are added, so that every later failure can be put in one layer without confusing the physical event with the relay's representation of it:
+
+> actual system → instrument transformer → wiring or network → relay measurement → protection calculation → decision → output → breaker
+
+**Where it lives (decided 2026-11-19).** A new **Bay tab**: one terminal of the same event that Coordination shows for the whole system.
+- **Same run as Coordination.** It shares the fault, scenario and playback (`useCoordination` in `App`). Coordination is the system view and Bay is one terminal's view; switching tabs mid-run shows the same moment.
+- **The chain view moves here** from Coordination, drawn as hardware (below). Coordination keeps the compact status badges on its one-line (OUT, NO DC, DC LOST, stuck breaker ring) and loses the chain section, which also helps the clutter flagged under *Complexity* in § Status. *The chain: one dead battery* stays on Coordination (it doesn't switch the module on).
+- **Gating:** one ⚙ module, "Foundations (bay view)". It shows the Bay tab and moves the chain view there; lessons that use the chain switch it on. With it off: no Bay tab, ideal instruments, and the app behaves exactly as before (chain under Coordination when Consequences is on). Schema v13: `features.foundations`, plus the migration step and test.
+
+#### Bay tab
+**1. Bay one-line (the chain drawn as hardware).** One terminal (default 52-AB at bus A; a picker for any relay) drawn as a station bay:
+- bus → bus VT → CT → breaker 52 → line. **The line relay's CT is on the bus side of the breaker** (as built 2026-11-19), so a bus zone using CTs on the line side overlaps the line zone across the breaker (V6). Electrically identical in the engine (the same current flows through both while the breaker is closed). **Bus VT** (as built: the engine measures voltage at the relay's bus, so the drawing matches; a line-side VT, where the relay loses voltage when its line is dead, is a possible later option)
+- CT secondary wiring and VT secondary through its fuse into the **relay**
+- relay trip output → trip circuit → trip coil; station DC supply; 52a/b status back to the relay; the channel to the remote terminal
+- Each device is one link in the chain (V3 § B): click to inspect it (reading, status, the field check that catches its failure) or fail it (reversed CT, ratio-setting error, VT fuse, relay out, DC lost, trip circuit open, stuck breaker, channel).
+- During playback the signals light up along the wiring: current on the CT leads, voltage on the VT leads, the trip pulse to the coil, the breaker opening, channel TX/RX.
+- A **≠ marker** wherever the relay's picture differs from the primary truth (reversed direction, wrong magnitude, voltage missing). That contrast is the point of the tab.
+
+**2. Oscillography (an event report on a shared time axis).**
+| Trace | Shows |
+|---|---|
+| **Primary** | What is on the line: phase currents (kA) and voltages (kV) |
+| **Secondary** | What the CTs and VTs deliver (A, V). Instrument faults show here: a reversed CT flips the trace, a blown fuse drops it to zero; saturation later bends it |
+| **Sampled** | The relay's samples as dots on the secondary wave (typical rate, illustrative), with the one-cycle filter window sliding along |
+| **Measured** | The relay's phasor estimate: magnitude ramping in over about a cycle, angle, apparent Z, direction |
+| **Digital** | Pickups, trip, output contact, 52a, channel TX/RX (the existing timing chart, reused) |
+
+- **Waveforms are synthesized** from the engine's phasors in each event segment, plus a decaying DC offset from the line X/R at inception. Labelled illustrative; harmonics and travelling-wave transients are not modelled.
+- **Window:** 3 cycles prefault through clearing plus 2 cycles. An uncleared run is cut off at a fixed length with a "not cleared" marker.
+- The Sampled and Measured traces explain why relay time isn't zero (ties to `relayCycles`) and what sampled values are, setting up SV in V3 § D. They are display-only and don't feed the phasor engine; the engine's decisions still come from its phasors.
+
+**Display units.** The engine stays in pu. The Bay tab shows real-looking values from a **typical, illustrative** base: 138 kV, 100 MVA (I_base ≈ 418 A), CT 1200:5, VT 1200:1 (≈ 115 V secondary line-to-line). Labelled "typical". These are fixed presets and are not added to Settings.
+
+**Sandbox controls** (Bay tab UI state only, not config): primary condition (load / close-in fault / remote fault / external fault), actual and configured CT/VT ratio, CT polarity, VT fuse.
+
+#### Engine: the instrument layer (`lib/instruments.js`)
+Today `solveFault` passes the solver's primary V/I straight into `measure()`. The instrument layer sits between them, so the existing rule *"relays see only what the solver gives them"* moves one layer down: **relays see only what their instruments give them.**
+- `instrument(Vabc, Iabc, inst)` → what the relay sees: secondary values, then conversion back to primary using the configured ratios. With ideal instruments (the default) it's the identity, so every existing result and test is unchanged.
+- Instrument faults are **scenario** entries, like `relayOos` and `tripOpen`, so they never leak into config or into lessons that don't set them:
+  - `ctReversed: { [rid]: 'abc' | 'a' }`: all three phases (leads swapped at the terminal block) or one phase (a wiring error)
+  - `ratioError: { [rid]: { ct, vt } }`: configured ÷ actual ratio. The relay's Z is scaled by (VTR_set/VTR_act)·(CTR_act/CTR_set), so a ratio-setting error becomes a **reach error**
+  - `vtFuse: { [rid]: 'a' | 'abc' }`: loss of potential
+  - Later: `ctSaturation` (phase 2)
+- The fault component `dI` (used for phase selection and "carrying") and the memory polarizer go through the same instruments, because the relay derives them from its own measurements.
+- 87L (`differential.js`) reads instrumented currents, so a reversed CT at B produces a false differential on a through-fault.
+- **Loss-of-potential (LOP) logic:** voltage collapses with no matching change in current → LOP asserts, distance is blocked, 87L is unaffected, and an alarm is logged. With LOP detection disabled, a blown fuse on a loaded line gives Z ≈ 0 forward and Zone 1 trips on load. That's the lesson. It needs a **non-fault event at t = 0** (the fuse operating; no power-system fault) and prefault load on. Today the timeline always places a fault, so this is new engine work: `loc = null` plus a scenario event.
+- **Breaker status (52a/b):** shown as an input on the bay one-line. No new logic (local 50BF is not modelled; lesson text says why breaker-failure logic trusts current, not the auxiliary contact).
+
+#### Lessons (*Foundations* track, ahead of *Why protection matters* and *Basics*; offered to both audiences on the welcome card)
+| # | Lesson | Tab | Objective / try this |
+|---|--------|-----|----------------------|
+| 0.1 | The relay cannot see the line | Bay | Minimum information for a decision: reveal CT, VT, breaker status, remote-terminal information one at a time |
+| 0.2 | CTs create the current view | Bay | Primary current, CT ratio, polarity → relay quantity. Try: configured ratio ≠ actual → apparent impedance moves, Zone 1 overreaches |
+| 0.3 | Direction is part of the measurement | Bay | Reverse one CT: the physical system is unchanged, the relay's interpretation flips (≠ marker, flipped secondary trace). Then the cost: reversed CT at B, DCB sends a false block (internal fault, slow clear) / 87L trips on a through-fault. One-phase reversal: residual on load |
+| 0.4 | A phasor takes a cycle to measure | Bay | Primary → secondary → samples → phasor on the oscillography; why relays need time; sampled values as the bridge to SV |
+| 0.5 | VTs create the voltage view | Bay | Primary voltage → relay phasor; magnitude, angle, and which phase is the reference |
+| 0.6 | Distance needs both voltage and current | Bay | Build Z = V/I from the two instrument inputs: load, close-in fault, remote fault |
+| 0.7 | Loss of potential is not a power-system fault | Bay | Remove the voltage, physical system unchanged. LOP off → Zone 1 trips on load; LOP on → distance blocked, alarm, 87L still protects |
+| 0.8 | A trip command is not an open breaker | Bay | Decision, output, trip coil, breaker, current interruption as separate events; stuck breaker shows the discrepancy (builds on the existing failures) |
+| later | CTs are not always perfect | both | Saturation on an external fault: actual vs ideal vs distorted secondary; 87L misoperation |
+
+- Lessons on the Bay tab still run the shared fault, so a lesson that clears declares `expect.verdict` as usual. Sandbox lessons have no clearing verdict. They declare **`expect.measured`** (the relay quantities or ≠ markers the lesson claims), and the test suite checks those like `expect.verdict`.
+
+#### Phasing
+1. **Instrument layer** in the engine (identity by default; scenario faults: polarity, ratio error, VT fuse), with tests proving the identity case changes nothing. Schema v13. **Built 2026-11-19** (`lib/instruments.js`): `solveFault(…, inst)` measures every relay through its instruments (V/I, fault component, memory polarizer, load Z) and keeps `prim` (primary truth); instrument faults are logged at inception (`kind: 'instrument'`); with no polarizing voltage (all-phase VT fuse) the directional element gives no direction (`dir: 0`). Tests: identity unchanged, ratio error → Zone 1 overreach, reversed CT at B → DCB false block and 87L through-fault trip, one reversed phase → residual on load, VT fuse → no distance trip. No UI yet: the module toggle comes with the Bay tab.
+2. **Bay tab, part 1:** bay one-line with the chain moved in (existing failures plus the CT/VT ones), ≠ markers, shared playback; lessons 0.1, 0.2, 0.3, 0.5, 0.6, 0.8 with `expect.measured`. **Built 2026-11-19:**
+   - `BayView.jsx` (terminal picker, fault picker, bay one-line + playback, this terminal's events and the outcome), `BayDiagram.jsx` (SVG bay; devices scroll to their chain card), `RelayView.jsx` (*What the relay sees*: Ia–Ic, 3I0, Va–Vc as primary / secondary / relay-computed, then loop, Z = V/I in primary and secondary ohms, direction, prefault load Z; ≠ on every difference). Display helpers in `instruments.js` (`bayQuantities`).
+   - The solver also measures each relay with ideal instruments (`meas.prim`: Z, dir, loop, Zload) so the view can show what a correctly wired relay would see.
+   - **Display base changed** from the draft: 138 kV with line A–B = 20 Ω primary (1 pu ≈ 3.98 kA; 4 Ω secondary for the whole line), because a 100 MVA base made the 1.0 pu line ≈ 190 Ω.
+   - The chain view's CT and VT cards gain polarity / set-ratio / fuse controls (module on). With the module on, Coordination drops its chain section; *The chain: one dead battery* doesn't switch the module on, so it keeps using the chain on Coordination.
+   - Lessons (track *Foundations*, `tab: 'bay'`, `bayRelay`, `expect.measured: { rid, zOhm, dir }`): *The relay cannot see the line*, *CTs create the current view*, *Direction is part of the measurement*, *VTs create the voltage view*, *Distance needs both voltage and current*, *A trip command is not an open breaker*. They use the full chain with SIR 0.5 behind X and Y so bus voltage sags realistically. The welcome card offers the first one to both audiences.
+3. **Oscillography:** primary / secondary / sampled / measured / digital traces; lesson 0.4. **Built 2026-11-19** (`lib/waveforms.js`, `Oscillography.jsx`, on the Bay tab under *What the relay sees*):
+   - Panels on one time axis: line current and voltage (primary); CT and VT secondary with the relay's samples as dots (all phases, 16/cycle, hidden when too dense), the one-cycle DFT window shaded at the cursor, and phase A's full-cycle DFT magnitude drawn as a peak envelope (solid) against the true magnitude (dashed); and digital rows (zone pickups, TRIP, 52a, TX/RX with a scheme).
+   - Windows: whole event (−3 cycles to clearing + 2 cycles; uncleared runs cut off at 30 cycles with a marker), fault inception (−1 to +4 cycles), around the cursor (±2 cycles). Click to move the playback cursor; the not-yet-played part is dimmed.
+   - Synthesis: steady phasors per event segment; DC offset at inception only (current continuous, τ = tan(line angle)/ω ≈ 9.9 ms); where a phase's current stops (its breaker opened) the pole carries on to its own next current zero. Voltages switch directly. Samples are shown sparse (16/cycle) for clarity.
+   - Lesson *A phasor takes a cycle to measure* (0.4).
+4. **LOP:** non-fault fuse event, LOP logic; lesson 0.7. **Built 2026-11-19:**
+   - **No-fault runs:** fault location `{ kind: 'none' }` ("No fault (instrument failure only)", offered with the Foundations module). The t = 0 event is still `kind: 'fault'` (text: no power-system fault), followed by the instrument failure, which then happens *at* t = 0: healthy before, and the relay's memory keeps the pre-event voltage. Verdicts: **secure** (no trip) or **misoperation** (any trip). No clearing, no consequences card.
+   - **Voltage start:** a relay with a failed VT input also starts on a voltage collapse (> 30% of memory) with no change in current, selecting its loop on the load current. All-phase fuse on a loaded line → Z = 0 with a forward memory direction.
+   - **Forward zones include Z = 0** with a forward memory direction (a memory-polarized mho includes the origin). Changed no existing result.
+   - **LOP logic** (Foundations module, on by default; `scenario.lopOff: [rid]` disables it, chain relay card "LOP blocking"): the voltage-start signature (voltage gone, current unchanged) asserts LOP → distance blocked, alarm event (`kind: 'lop'`), shown on the bay relay, the chain and an oscillography row. Without it, Zone 1 trips on load at 17 ms.
+   - Lesson *Loss of potential is not a power-system fault* (0.7): all three fuses at 21-AB on a loaded line → secure; LOP off → misoperation; phase A only → Z ≈ 118 Ω (outside the zones), LOP still asserts; a real fault with the fuse already gone → 21-AB blind, backup at 367 ms.
+5. **Later:** CT saturation (bends the secondary trace; phasor error into the engine and 87L).
+
+#### Open questions
+- Typical base values (138 kV, 1200:5, 1200:1) and sampling rate: confirm from published, vendor-neutral sources when the lessons are written.
+- COMTRADE export of the synthesized event report (for use in other tools): only if testers ask.
+
+---
+
+### V6 — Bus differential (step 1 built 2026-11-19)
+
+**Why.** Line protection's neighbour, and the clearest place to teach CT polarity and CT location. A bus differential zone sums every CT around the bus; one reversed CT turns an external fault into a bus trip (every breaker on the bus opens). It reuses the instrument layer (polarity, ratio) and the percentage-differential math in `differential.js`, and it is where external-fault CT saturation matters most (V5 phase 5).
+
+**Sketch.**
+- **Zone:** bus B (both adjacent lines exist with the Adjacent lines feature): CTs on 52-BA and 52-BY, plus bus B's infeed source when the infeed feature is on. Per phase Iop = |Σ I|, Ires = Σ|I| (or max), operate on pickup and slope, like 87L.
+- **Engine:** 87B evaluated on every network solve, like `update87`; trips every breaker at the bus after relay time. Fault at bus B → internal; faults on A–B or B–Y → external (through-fault). Lines' own relays unchanged.
+- **Overlap:** the CTs sit on the line side of each breaker, so the bus zone and the line zones overlap across the breakers: a fault between breaker and CT is in both. Bay tab and one-line show the zone boundary at the CTs.
+- **Failures:** CT reversed on one feeder (through-fault → bus trip), ratio mismatch (false differential on load and through-faults), later saturation (the classic external-fault misoperation and why bus differential needs restraint or high-impedance designs).
+- **Gating:** its own module (like 87L), no learner level switches it.
+
+**Draft lessons:** *What goes in must come out (bus edition)*; *One reversed CT trips the bus*; *The CT is the boundary* (fault between breaker and CT); later *Saturation on an external fault*.
+
+**As built (step 1, 2026-11-19)** — defaults chosen for the open questions: low-impedance percentage only; shown on the Bay tab and the Coordination one-line.
+- `lib/busdiff.js`: `busZone()` (module 'busdiff' + Adjacent lines, bus B not a source — with infeed on, B's source has no breaker in this model, so the zone is off), `busDiffElement()` per phase Iop = |Σ I into the bus|, Ires = Σ|I|, defaults pickup 0.2 pu (≈ 0.8 kA), slope 50% (schema v14: `features.busdiff`, `busdiff: { pickupPu, slopePct }`, ⚙ Modules).
+- Bus CTs are their own instruments (`bus:<rid>` keys in `ctReversed` etc.), on the line side of each breaker; the line relays' CTs are on the bus side, so a bus CT fault never touches the line relay on the same breaker.
+- Engine: `update87B` on every network solve (like 87L), trips every breaker at the bus after relay time (logic '87B'); dead with station B's DC. Outcome: with 87B in force a bus-B fault's primary breakers are the bus breakers (verdict selective), and 87B trips for external faults are out-of-section (miscoordination). Instrument failures are now listed right after the t = 0 event, before anything they cause.
+- Display: dashed 87B zone around bus B on the Coordination one-line (red when operating, TRIP 87B under the relays); on the Bay tab (terminals at B) the 87B CT on the line side of the breaker with its 87B box, a *what goes in must come out* card (each CT's current into the bus, Σ I, Σ|I|, ratio, bus-CT polarity controls), and an 87B OP row in the oscillography.
+- Lessons (track *Bus differential*): *Bus differential: what goes in must come out* (bus fault 67 ms vs 367 ms without; external fault cancels), *One reversed CT trips the bus* (external fault → bus trip, miscoordination; the same reversed CT fails to trip a bus fault, 39% < 50% slope).
+
+**Bus view and operate trace (built 2026-11-19):**
+- The Bay tab's terminal picker gains **Bus B (87B)** (`bus:B`; lessons can open it with `bayRelay: 'bus:B'`): `BusDiagram.jsx` draws the bus with every feeder bay (line-relay CT on the bus side, breaker, 87B CT on the line side, actual current in/out of the bus), each 87B CT's secondary wired to the 87B relay with the current it reports, and Σ I / Σ|I| in the relay.
+- Oscillography: terminals at bus B get an **87B operate** panel (|Σ I|, slope × Σ|I|, pickup; worst phase, steps per event); bus mode shows each 87B CT's secondary (phase A, into the bus) with their sum (the differential current), the operate panel, and 87B OP / TRIP / 52 per feeder. `busTrace()` in `waveforms.js`.
+- 87B now also runs on a healthy system (no-fault runs), so a wrong CT can trip on load.
+- *One reversed CT trips the bus* now has load on and opens on the bus view: 769 A standing differential before the fault (just under the 797 A pickup); with No fault and pickup 0.15 pu it trips on load (misoperation); a bus fault gives 2.19 kA vs 5.2 kA restraint (42%), fails to trip.
+- Not built (decided): a load feeder or a third protected terminal at bus B.
+
+**ANSI symbols (2026-11-19):** the Bay, bus and Coordination drawings use ANSI-style one-line symbols (`Symbols.jsx`): CTs as a half-loop on the conductor with polarity marks on the primary side and the secondary lead (line-relay CTs marked toward the bus, 87B CTs toward the line), VTs as coils with polarity marks, breakers as squares. A polarity error is drawn as the CT installed correctly with its leads crossed at a terminal block in front of the relay (the usual real cause). No legend (decided).
+
+**Next (step 2):** *The CT is the boundary*: a fault between a breaker and its CTs (new fault location at the breaker), inside both zones thanks to the overlap; the blind spot when both zones use the same CT. Then saturation on an external fault (V5 phase 5), and possibly a high-impedance comparison.
 
 ---
 

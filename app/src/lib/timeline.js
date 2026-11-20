@@ -13,6 +13,8 @@
 
 import { buildNetwork, faultPosition, relayGeometry, describeLocation, activeTap, isTapFault, EPS } from './network'
 import { solveFault, faultSpec, FAULT_TYPES } from './solver'
+import { instrumentFaults, describeInstrumentFaults } from './instruments'
+import { busZone, busDiffElement } from './busdiff'
 import { diffElement, DEFAULT_DIFF } from './differential'
 import { zoneAsserts, relayShape, zoneDelayS, ctiS, activeZones, isReverse, zoneLabel } from './protection'
 
@@ -27,7 +29,8 @@ const CHANNEL_TEXT = { out: 'out of service', lost: 'lost' }
 // → operated (latched target). pending/picked fall back to 'reset' when the
 // fault current through the relay goes away.
 //
-// scenario: { relayOos: [rid], breakerFail: [rid], channels: { lineId: 'ok' | 'out' | 'lost' }, diffChannel: 'ok' | 'out', dcLost: [busId], tripOpen: [rid] }
+// scenario: { relayOos: [rid], breakerFail: [rid], channels: { lineId: 'ok' | 'out' | 'lost' }, diffChannel: 'ok' | 'out', dcLost: [busId], tripOpen: [rid],
+//             ctReversed, ratioError, vtFuse (instrument faults, lib/instruments) }
 //   tripOpen — trip circuit open (e.g. open trip coil): the relay trips but the
 //              breaker never receives it (unlike breakerFail: received, didn't open)
 //   dcLost — station DC supply lost: every relay at that bus is dead and its
@@ -42,6 +45,9 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   const { freqHz, relayCycles, breakerCycles } = config.timing
   const tRelay = relayCycles / freqHz
   const tBkr = breakerCycles / freqHz
+  // loc { kind: 'none' }: no power-system fault. The t = 0 event is then the
+  // instrument failure itself (e.g. a VT fuse blowing on a loaded line).
+  const noFault = loc?.kind === 'none'
   const pf = faultPosition(net, loc)
   const relayIds = Object.keys(config.relays)
   const dcLost = new Set(scenario.dcLost ?? [])
@@ -49,9 +55,19 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   const oos = new Set([...(scenario.relayOos ?? []), ...dead])
   const stuck = new Set([...(scenario.breakerFail ?? []), ...dead])
   const tripOpen = new Set(scenario.tripOpen ?? [])
+  // CT/VT faults (Foundations module): every solve measures through them
+  const inst = instrumentFaults(config, scenario)
+  // With no fault the instrument failure happens at t = 0: healthy before, memory intact after
+  const instPre = noFault ? {} : inst
+  const instNow = noFault ? { ...inst, memoryIntact: true } : inst
+  // Loss-of-potential logic (Foundations module): voltage collapsed with no
+  // change in current → distance blocked and alarmed. scenario.lopOff disables it.
+  const lopOn = !!config.features?.foundations
+  const lopOff = new Set(scenario.lopOff ?? [])
+  const lop = {}
 
   const geo = Object.fromEntries(relayIds.map(id => [id, relayGeometry(net, config.relays[id])]))
-  const fwd = Object.fromEntries(relayIds.map(id => [id, (pf - geo[id].pos) * geo[id].dir]))
+  const fwd = Object.fromEntries(relayIds.map(id => [id, noFault ? NaN : (pf - geo[id].pos) * geo[id].dir]))
   const zonesOf = rid => activeZones(config.relays[rid], config)
 
   const breakers = Object.fromEntries(relayIds.map(id => [id, 'closed'])) // closed | open | failed
@@ -99,6 +115,14 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   const diffCh = scenario.diffChannel ?? 'ok'
   const diff = { op: false, token: 0, blockedLogged: false }
 
+  // ── Bus differential (87B) on bus B, with the 'busdiff' module ──
+  // Evaluated on every network solve from its own (line-side) CTs; trips every
+  // breaker at the bus after relay time unless it drops out first. Dead with
+  // the station's DC supply.
+  const bz = busZone(net, config)
+  const busOn = !!bz && !dcLost.has(bz.bus)
+  const bus87 = { op: false, token: 0 }
+
   const queue = []
   let seq = 0
   const schedule = (t, kind, data) => queue.push({ t, kind, seq: seq++, ...data })
@@ -112,11 +136,13 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
     tripped: { ...tripped },
     paths: paths.map(p => ({ ...p })),
     carrying: [...carrying],
-    meas: Object.fromEntries(Object.entries(meas).map(([id, m]) => [id, { V: m.V, I: m.I, I0x3: m.I0x3, Z: m.Z, dir: m.dir, loop: m.loop, Zload: m.Zload }])),
+    meas: Object.fromEntries(Object.entries(meas).map(([id, m]) => [id, { V: m.V, I: m.I, I0x3: m.I0x3, Z: m.Z, dir: m.dir, loop: m.loop, Zload: m.Zload, Vabc: m.Vabc, Iabc: m.Iabc, prim: m.prim }])),
     diff: diffOn ? { op: diff.op } : null,
+    bus87: busOn ? { op: bus87.op } : null,
     tx: { ...tx },
     rx: { ...rx },
-    faultEnergized: faultOn && clearedAt === null,
+    faultEnergized: faultOn && clearedAt === null && !noFault,
+    lop: { ...lop },
     faultI,
   })
   const log = (t, kind, text, extra = {}) => events.push({ t, kind, text, ...extra, state: snapshot() })
@@ -134,7 +160,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   function trip(t, rid, zid, logic, why) {
     tripped[rid] = { t, zoneId: zid, logic }
     const how = logic === 'step' ? `Z${zid}` : `${logic} (${why})`
-    log(t, 'trip', `21-${rid} ${how} TRIP → 52-${rid}`, { rid, zid, logic })
+    log(t, 'trip', logic === '87B' ? `87B (${why}) TRIP → 52-${rid}` : `21-${rid} ${how} TRIP → 52-${rid}`, { rid, zid, logic })
     if (tripOpen.has(rid) && !stuck.has(rid)) log(t, 'bkrFail', `Trip circuit 52-${rid} open — the trip never reaches the breaker`, { rid })
     else schedule(t + tBkr, stuck.has(rid) ? 'bkrFail' : 'bkrOpen', { rid })
   }
@@ -166,6 +192,20 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
     checkPilot(t, rid)
   }
 
+  function update87B(t) {
+    const el = busDiffElement(meas, bz, inst, config.busdiff)
+    if (el.op === bus87.op) return
+    bus87.op = el.op
+    bus87.token++
+    const ph = el.phases.reduce((w, p) => (p.Iop > w.Iop ? p : w))
+    if (el.op) {
+      log(t, 'diff', `87B bus ${bz.bus} differential ${ph.Iop.toFixed(2)} pu (restraint ${ph.Ires.toFixed(2)} pu) — trip every breaker at bus ${bz.bus} after relay time`)
+      schedule(t + tRelay, 'trip87B', { token: bus87.token })
+    } else if (!bz.feeders.some(id => tripped[id]?.logic === '87B')) {
+      log(t, 'reset', `87B bus ${bz.bus} differential drops out`)
+    }
+  }
+
   function update87(t) {
     const [a, b] = diffIds
     const phases = diffElement(meas[a].Iabc, meas[b].Iabc, meas[a].Vabc, meas[b].Vabc, diffSet)
@@ -190,7 +230,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
 
   // Re-solve the phasor network and update zone pickups from the measurements.
   function evaluate(t) {
-    const sol = solveFault(net, config, loc, breakers, fault)
+    const sol = solveFault(net, config, loc, breakers, fault, instNow)
     meas = sol.relays
     faultI = sol.faultI
     // Live sources draw as source → fault paths on the one-line
@@ -198,12 +238,19 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
       const ps = net.buses[source].pos
       return { source, lo: Math.min(ps, pf), hi: Math.max(ps, pf) }
     })
-    carrying = new Set(relayIds.filter(id => meas[id].carrying))
+    for (const rid of relayIds) {
+      if (lopOn && !lop[rid] && !oos.has(rid) && !lopOff.has(rid) && meas[rid].vStart) {
+        lop[rid] = true
+        log(t, 'lop', `21-${rid} LOSS OF POTENTIAL — voltage gone with no change in current: not a power-system fault. Distance blocked, alarm raised`, { rid })
+      }
+    }
+    // A relay that started on a voltage collapse (failed VT, no LOP block) treats its load current as fault current
+    carrying = new Set(relayIds.filter(id => meas[id].carrying || (meas[id].vStart && !lop[id])))
 
     for (const rid of relayIds) {
       for (const z of zonesOf(rid)) {
         const zs = zones[rid][z.id]
-        const asserted = !oos.has(rid)
+        const asserted = !oos.has(rid) && !lop[rid]
           && zoneAsserts(z, meas[rid], geo[rid].lineLength, config.lineAngleDeg, relayShape(config.relays[rid], config))
         if (asserted && (zs.status === 'idle' || zs.status === 'reset')) {
           zs.status = 'pending'
@@ -231,8 +278,10 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
 
     // Differential drops out with the fault current
     if (diffOn && clearedAt === null) { if (sol.energized) update87(t); else diff.op = false }
+    // 87B also runs on a healthy system (no fault): a wrong CT shows up as differential on load
+    if (busOn && clearedAt === null) { if (sol.energized || noFault) update87B(t); else bus87.op = false }
 
-    if (!sol.energized && clearedAt === null) {
+    if (!sol.energized && clearedAt === null && !noFault) {
       clearedAt = t
       log(t, 'cleared', `Fault cleared — all sources isolated`)
     }
@@ -240,7 +289,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   }
 
   // Prefault: healthy network (no load — every bus at E = 1∠0°, no current)
-  meas = solveFault(net, config, null, breakers).relays
+  meas = solveFault(net, config, null, breakers, {}, instPre).relays
   log(-PREFAULT_CYCLES / freqHz, 'prefault', config.features?.load && config.loadAngleDeg
     ? `Prefault: system healthy, carrying load (sources ${config.loadAngleDeg}° apart)`
     : 'Prefault: system healthy, no load — all buses at 1∠0° pu')
@@ -251,14 +300,20 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   events.splice(firstAtFault, 0, {
     t: 0,
     kind: 'fault',
-    text: `${FAULT_TYPES[fault.type]} fault applied: ${describeLocation(net, loc)}${fault.rf > 0 ? ` through Rf = ${fault.rf} pu` : ''}`,
+    text: noFault ? 'No power-system fault: the line and its load are unchanged'
+      : `${FAULT_TYPES[fault.type]} fault applied: ${describeLocation(net, loc)}${fault.rf > 0 ? ` through Rf = ${fault.rf} pu` : ''}`,
     state: snapshot(),
   })
+  // Instrument failures (standing, or with no fault the t = 0 event itself) are
+  // listed right after the fault event, before anything they cause
+  events.splice(firstAtFault + 1, 0, ...describeInstrumentFaults(inst)
+    .map(({ rid, text }) => ({ t: 0, kind: 'instrument', text, rid, state: events[firstAtFault].state })))
 
   for (const bus of net.busOrder) {
     const ids = relayIds.filter(id => dead.has(id) && config.relays[id].bus === bus)
     if (ids.length) log(0, 'channel', `Station ${bus} DC supply lost — ${ids.map(id => `21-${id}`).join(', ')} dead; ${ids.map(id => `52-${id}`).join(', ')} cannot trip`)
   }
+
 
   if (tapFault === 'tapLV') schedule(tap.clearCycles / freqHz, 'tapClear', {})
 
@@ -303,7 +358,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
         const where = tapFault === 'tap' ? 'on the tap section'
           : tapFault === 'tapLV' ? 'behind the tap transformer'
           : `at ${Math.round(fwd[e.rid] / geo[e.rid].lineLength * 100)}% of its line`
-        log(e.t, 'pickup', `21-${e.rid} Z${e.zid} picks up (fault ${where})${delayOf(z) > 0 ? ` — ${ms(delayOf(z))} timer starts` : ''}`, { rid: e.rid, zid: e.zid })
+        log(e.t, 'pickup', `21-${e.rid} Z${e.zid} picks up (${noFault ? 'no fault on the system: measured Z ≈ 0' : `fault ${where}`})${delayOf(z) > 0 ? ` — ${ms(delayOf(z))} timer starts` : ''}`, { rid: e.rid, zid: e.zid })
         schedule(e.t + delayOf(z), 'operate', { rid: e.rid, zid: e.zid, token: zs.token })
         if (e.zid === 2 && schemeOf(e.rid) === 'DCB') schedule(e.t + tCoord, 'coord', { rid: e.rid, token: zs.token })
       }
@@ -327,6 +382,9 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
     } else if (e.kind === 'trip87') {
       if (e.token !== diff.token || !diff.op) continue
       for (const rid of diffIds) if (!tripped[rid]) trip(e.t, rid, 0, '87L', 'differential')
+    } else if (e.kind === 'trip87B') {
+      if (e.token !== bus87.token || !bus87.op) continue
+      for (const rid of bz.feeders) if (!tripped[rid]) trip(e.t, rid, 0, '87B', `bus ${bz.bus} differential`)
     } else if (e.kind === 'lockout') {
       log(e.t, 'channel', `Channel ${e.line} DCUB unblock window closes — pilot locked out, step distance only`)
     } else if (e.kind === 'bkrOpen') {
@@ -350,32 +408,51 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   }
 
   const endT = events[events.length - 1].t
-  if (clearedAt === null) log(endT, 'uncleared', 'Fault NOT cleared — no remaining protection will operate')
+  if (clearedAt === null && !noFault) log(endT, 'uncleared', 'Fault NOT cleared — no remaining protection will operate')
 
-  const outcome = assessOutcome(net, config, loc, pf, geo, { tripped, opened, breakers, clearedAt, oos, stuck, dead, tripOpen, tapFault, events })
-  return { events, outcome, clearedAt, pf, net, tRelay, tBkr, startT: events[0].t, fault }
+  const outcome = noFault ? assessNoFault(tripped, lop)
+    : assessOutcome(net, config, loc, pf, geo, { tripped, opened, breakers, clearedAt, oos, stuck, dead, tripOpen, tapFault, events, busZone: busOn ? bz : null })
+  return { events, outcome, clearedAt, pf, net, tRelay, tBkr, startT: events[0].t, fault, noFault }
+}
+
+// No power-system fault: any trip is a misoperation; no trip is secure.
+function assessNoFault(tripped, lop) {
+  const notes = []
+  const how = t => (t.logic && t.logic !== 'step' ? t.logic : `Z${t.zoneId}`)
+  for (const [id, t] of Object.entries(tripped)) {
+    notes.push({ level: 'bad', text: t.logic === '87B'
+      ? `87B tripped 52-${id} at ${ms(t.t)} with no fault on the system: the differential it saw came from a wrong CT, not the bus.`
+      : `21-${id} tripped (${how(t)} at ${ms(t.t)}) with no fault on the system: it took a failed measurement for a fault.` })
+  }
+  for (const id of Object.keys(lop)) {
+    notes.push({ level: 'info', text: `21-${id} loss-of-potential logic blocked distance and raised an alarm. Until the VT is fixed, its distance zones can't protect the line.` })
+  }
+  return { verdict: Object.keys(tripped).length ? 'misoperation' : 'secure', clearedAt: null, notes }
 }
 
 // Judge the run: selective, backup clearing, miscoordination, or not cleared.
 function assessOutcome(net, config, loc, pf, geo, run) {
-  const { tripped, opened, breakers, clearedAt, oos, stuck, dead = new Set(), tripOpen = new Set(), tapFault = null, events } = run
+  const { tripped, opened, breakers, clearedAt, oos, stuck, dead = new Set(), tripOpen = new Set(), tapFault = null, events, busZone: bz = null } = run
   const cti = ctiS(config.timing)
   const notes = []
   const relayIds = Object.keys(config.relays)
 
   // Primary breakers: both ends of the faulted line. Bus faults have none —
-  // bus protection is not modeled, so remote Z2 backup is the expected clearing.
+  // unless bus differential (87B) covers that bus: then its breakers are
+  // primary; otherwise remote Z2 backup is the expected clearing.
   // A tap-section fault is inside the tapped line's zone (no breaker at the
   // tap); a fault behind the tap transformer belongs to the tap's own protection.
   const tapLine = tapFault ? Object.values(net.lines).find(l => l.tap)?.id : null
-  const primary = loc.kind === 'line' ? relayIds.filter(id => config.relays[id].line === loc.line)
+  const busPrimary = loc.kind === 'bus' && bz && loc.bus === bz.bus
+  const primary = busPrimary ? bz.feeders
+    : loc.kind === 'line' ? relayIds.filter(id => config.relays[id].line === loc.line)
     : tapFault === 'tap' ? relayIds.filter(id => config.relays[id].line === tapLine)
     : []
   const sideOf = id => Math.sign(pf - geo[id].pos) // relay sits left (+1) or right (-1) of fault
   const how = id => (tripped[id].logic && tripped[id].logic !== 'step' ? tripped[id].logic : `Z${tripped[id].zoneId}`)
 
   let verdict = clearedAt === null ? 'uncleared' : 'selective'
-  if (loc.kind === 'bus') {
+  if (loc.kind === 'bus' && !busPrimary) {
     notes.push({ level: 'info', text: `Bus fault — bus differential not modeled; clearing relies on remote line relays.` })
     if (verdict !== 'uncleared') verdict = 'backup'
   }
@@ -402,7 +479,7 @@ function assessOutcome(net, config, loc, pf, geo, run) {
     }
     if (primary.includes(id)) continue
     const primarySameSide = primary.find(p => sideOf(p) === sideOf(id))
-    const justified = loc.kind === 'bus' || !primarySameSide || opened[primarySameSide] === undefined
+    const justified = (loc.kind === 'bus' && !busPrimary) || !primarySameSide || opened[primarySameSide] === undefined
     if (justified) {
       notes.push({ level: 'info', text: `52-${id} cleared as remote backup (${how(id)} at ${ms(tripped[id].t)}).` })
       if (verdict === 'selective') verdict = 'backup'

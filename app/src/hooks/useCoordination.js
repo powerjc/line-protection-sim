@@ -5,10 +5,10 @@ import { EPS, buildNetwork, activeTap } from '../lib/network'
 const TAIL = 0.05 // s of playback after the last event
 export const DEFAULT_FAULT = { kind: 'line', line: 'AB', frac: 0.9 }
 export const DEFAULT_SPEC = { type: '3PH', rf: 0 } // fault type + resistance
-const EMPTY_SCENARIO = { relayOos: [], breakerFail: [], channels: {}, diffChannel: 'ok', dcLost: [], tripOpen: [] }
+const EMPTY_SCENARIO = { relayOos: [], breakerFail: [], channels: {}, diffChannel: 'ok', dcLost: [], tripOpen: [], ctReversed: {}, ratioError: {}, vtFuse: {}, lopOff: [] }
 
 // A fault location only makes sense if its bus/line exists in this network
-const validLoc = (net, loc, config) => (loc.kind === 'tap' || loc.kind === 'tapLV' ? !!activeTap(net, config)
+const validLoc = (net, loc, config) => (loc.kind === 'none' ? !!config.features?.foundations : loc.kind === 'tap' || loc.kind === 'tapLV' ? !!activeTap(net, config)
   : loc.kind === 'bus' ? loc.bus in net.buses : loc.line in net.lines)
 
 export function useCoordination(config) {
@@ -87,6 +87,13 @@ export function useCoordination(config) {
     scenario, toggleOos: id => toggleListItem('relayOos', id), toggleBreakerFail: id => toggleListItem('breakerFail', id),
     toggleDc: bus => toggleListItem('dcLost', bus),
     toggleTripOpen: id => toggleListItem('tripOpen', id),
+    toggleLopOff: id => toggleListItem('lopOff', id),
+    // Instrument faults (Foundations): kind = 'ctReversed' | 'ratioError' | 'vtFuse'; null clears
+    setInstrument: (kind, rid, v) => setScenario(prev => {
+      const next = { ...(prev[kind] ?? {}) }
+      if (v == null) delete next[rid]; else next[rid] = v
+      return { ...prev, [kind]: next }
+    }),
     sim, state, eventIdx: idx,
     time: t, setTime: v => { setPlaying(false); setTime(v) }, startT, endT,
     playing, togglePlay, speed, setSpeed,

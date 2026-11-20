@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { abs } from '../lib/complex'
 import { relayColor } from '../lib/colors'
 import { zoneLabel } from '../lib/protection'
+import { CT_SETTINGS, VT_SETTINGS, BAY_BASE, baseAmps } from '../lib/instruments'
 
 // Protection chain for one terminal: every link between the fault and the
 // breaker opening, each with its live state and the failure you can inject.
@@ -14,11 +15,11 @@ const STYLE = {
   na:   { box: 'border-gray-200 bg-gray-50', tag: 'bg-gray-100 text-gray-500', label: 'N/A' },
 }
 
-function Link({ name, status, live, control, check, last }) {
+function Link({ id, name, status, live, control, check, last }) {
   const st = STYLE[status]
   return (
     <li className="flex items-stretch gap-1 min-w-0">
-      <div className={`flex-1 min-w-0 rounded-lg border ${st.box} px-2.5 py-2 flex flex-col gap-1`}>
+      <div id={`chain-${id}`} className={`flex-1 min-w-0 rounded-lg border ${st.box} px-2.5 py-2 flex flex-col gap-1 transition`}>
         <div className="flex items-center justify-between gap-1">
           <span className="text-xs font-semibold text-gray-800">{name}</span>
           <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 ${st.tag}`}>{st.label}</span>
@@ -47,9 +48,30 @@ const pu = x => `${x.toFixed(2)} pu`
 const NERC_GLOSSARY = 'https://www.nerc.com/glossary-of-terms'
 const NERC_TIP = 'Protection System (NERC Glossary): Protective relays which respond to electrical quantities; Communications systems necessary for correct operation of protective functions; Voltage and current sensing devices providing inputs to protective relays; Station dc supply associated with protective functions (including station batteries, battery chargers, and non-battery-based dc supply); and Control circuitry associated with protective functions through the trip coil(s) of the circuit breakers or other interrupting devices.\n\nComposite Protection System (NERC Glossary): The total complement of Protection System(s) that function collectively to protect an Element. Backup protection provided by a different Element’s Protection System(s) is excluded.'
 
-export default function ChainView({ config, sim, state, coord }) {
+function Pick({ value, onChange, options, label }) {
+  return (
+    <label className="flex flex-col gap-0.5 text-gray-700 min-w-0">
+      <span className="text-[11px] text-gray-500">{label}</span>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white w-full min-w-0">
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </label>
+  )
+}
+
+const kA = x => `${(x * baseAmps() / 1000).toFixed(2)} kA`
+const kV = x => `${(x * BAY_BASE.kV / Math.sqrt(3)).toFixed(1)} kV`
+const ratioKey = (list, k) => list.find(([, r]) => Math.abs(r - k) < 1e-9)?.[0] ?? list[0][0]
+
+// Controlled terminal (rid, onRid) on the Bay tab; uncontrolled under Coordination.
+// With the Foundations module on, the CT and VT links can fail too.
+export default function ChainView({ config, sim, state, coord, rid: ridProp, onRid, title = 'Protection chain' }) {
   const relayIds = Object.keys(config.relays)
-  const [ridRaw, setRid] = useState('AB')
+  const [ridLocal, setRidLocal] = useState('AB')
+  const ridRaw = ridProp ?? ridLocal
+  const setRid = onRid ?? setRidLocal
+  const inst = !!config.features?.foundations
   const rid = relayIds.includes(ridRaw) ? ridRaw : relayIds[0]
   const r = config.relays[rid]
   const sc = coord.scenario
@@ -71,27 +93,64 @@ export default function ChainView({ config, sim, state, coord }) {
   const chValue = scheme !== 'step' ? sc.channels?.[r.line] ?? 'ok' : diff87 ? sc.diffChannel ?? 'ok' : null
   const otherAtBus = relayIds.filter(id => id !== rid && config.relays[id].bus === r.bus)
 
+  const ctRev = sc.ctReversed?.[rid] ?? ''
+  const ratio = sc.ratioError?.[rid] ?? {}
+  const fuse = sc.vtFuse?.[rid] ?? ''
+  const setRatio = (k, v) => {
+    const next = { ...ratio, [k]: v }
+    coord.setInstrument('ratioError', rid, (next.ct ?? 1) === 1 && (next.vt ?? 1) === 1 ? null : next)
+  }
+  const Iprim = m?.prim ? abs(m.prim.Iabc[0]) : m ? abs(m.I) : 0
+  const Vprim = m?.prim ? abs(m.prim.Vabc[0]) : m ? abs(m.V) : 0
+
   const links = [
     {
+      id: 'ct',
       name: 'CT (current)',
-      status: 'ok',
-      live: carrying && m ? `Ia ${pu(abs(m.I))}` : 'no fault current',
+      status: ctRev || (ratio.ct ?? 1) !== 1 ? 'fail' : 'ok',
+      live: inst ? (m ? `Ia ${kA(Iprim)} → ${(Iprim * baseAmps() / BAY_BASE.ctRatio).toFixed(1)} A` : '—')
+        : carrying && m ? `Ia ${pu(abs(m.I))}` : 'no fault current',
+      control: inst ? (
+        <div className="flex flex-col gap-1">
+          <Pick label="Polarity" value={ctRev} onChange={v => coord.setInstrument('ctReversed', rid, v || null)}
+            options={[['', 'Correct'], ['abc', 'Reversed (all)'], ['a', 'Reversed (phase A)']]} />
+          <Pick label={`Set ratio (actual ${BAY_BASE.ctLabel})`} value={ratioKey(CT_SETTINGS, ratio.ct ?? 1)}
+            onChange={v => setRatio('ct', CT_SETTINGS.find(([l]) => l === v)[1])} options={CT_SETTINGS.map(([l]) => [l, l])} />
+        </div>
+      ) : null,
       check: 'Ratio and polarity tests at commissioning; secondary circuit grounded at one point.',
     },
     {
+      id: 'vt',
       name: 'VT (voltage)',
-      status: 'ok',
-      live: m ? `Va ${pu(abs(m.V))}` : '—',
+      status: fuse || (ratio.vt ?? 1) !== 1 ? 'fail' : 'ok',
+      live: inst ? (m ? `Va ${kV(Vprim)} → ${(Vprim * BAY_BASE.kV * 1000 / Math.sqrt(3) / BAY_BASE.vtRatio * (fuse === 'abc' || fuse === 'a' ? 0 : 1)).toFixed(1)} V` : '—')
+        : m ? `Va ${pu(abs(m.V))}` : '—',
+      control: inst ? (
+        <div className="flex flex-col gap-1">
+          <Pick label="Fuse" value={fuse} onChange={v => coord.setInstrument('vtFuse', rid, v || null)}
+            options={[['', 'Intact'], ['a', 'Phase A blown'], ['abc', 'All blown']]} />
+          <Pick label={`Set ratio (actual ${BAY_BASE.vtLabel})`} value={ratioKey(VT_SETTINGS, ratio.vt ?? 1)}
+            onChange={v => setRatio('vt', VT_SETTINGS.find(([l]) => l === v)[1])} options={VT_SETTINGS.map(([l]) => [l, l])} />
+        </div>
+      ) : null,
       check: 'Fuse / MCB supervision raises a loss-of-potential alarm; secondary voltage checks.',
     },
     {
+      id: 'relay',
       name: `Relay 21-${rid}`,
       status: dcLost ? 'nodc' : oos ? 'fail' : 'ok',
-      live: dcLost ? 'dead' : oos ? 'out of service' : tripped ? `TRIP ${tripped.logic && tripped.logic !== 'step' ? tripped.logic : `Z${tripped.zoneId}`}` : picked.length ? `${picked.map(zoneLabel).join(' ')} picked up` : 'watching',
-      control: <Toggle checked={!oos} onChange={() => coord.toggleOos(rid)}>In service</Toggle>,
+      live: dcLost ? 'dead' : oos ? 'out of service' : state.lop?.[rid] && !tripped ? 'LOP: distance blocked' : tripped ? `TRIP ${tripped.logic && tripped.logic !== 'step' ? tripped.logic : `Z${tripped.zoneId}`}` : picked.length ? `${picked.map(zoneLabel).join(' ')} picked up` : 'watching',
+      control: (
+        <div className="flex flex-col gap-1">
+          <Toggle checked={!oos} onChange={() => coord.toggleOos(rid)}>In service</Toggle>
+          {inst && <Toggle checked={!sc.lopOff?.includes(rid)} onChange={() => coord.toggleLopOff(rid)}>LOP blocking</Toggle>}
+        </div>
+      ),
       check: 'Self-test alarm monitored by SCADA; settings checked against the approved file; periodic functional tests.',
     },
     {
+      id: 'ch',
       name: scheme !== 'step' ? `Channel ${lineName} (${scheme})` : diff87 ? `Channel ${lineName} (87L)` : 'Channel',
       status: chValue === null ? 'na' : chValue === 'ok' ? 'ok' : 'fail',
       live: chValue === null ? 'step distance: no channel' : `${state.tx?.[rid] ? 'TX ' : ''}${state.rx?.[rid] ? 'RX' : ''}` || 'quiet',
@@ -106,6 +165,7 @@ export default function ChainView({ config, sim, state, coord }) {
       check: 'Channel monitoring and alarms (loss of guard / signal, errors, delay); end-to-end scheme tests.',
     },
     {
+      id: 'dc',
       name: `DC supply (station ${r.bus})`,
       status: dcLost ? 'fail' : 'ok',
       live: dcLost ? `lost: ${[rid, ...otherAtBus].map(id => `21-${id}`).join(', ')} dead` : '125 V DC (typical)',
@@ -113,6 +173,7 @@ export default function ChainView({ config, sim, state, coord }) {
       check: 'Battery and charger alarms, DC ground detection, battery load tests. Batteries, chargers and any non-battery DC supply are all part of the Protection System.',
     },
     {
+      id: 'trip',
       name: 'Trip circuit',
       status: dcLost ? 'nodc' : tripOpen ? 'fail' : 'ok',
       live: dcLost ? 'no DC to trip' : tripped ? (tripOpen ? 'trip not delivered' : 'trip delivered') : 'idle',
@@ -120,6 +181,7 @@ export default function ChainView({ config, sim, state, coord }) {
       check: 'Trip-circuit supervision alarms on an open coil or wiring; trip tests during maintenance.',
     },
     {
+      id: 'bkr',
       name: `Breaker 52-${rid}`,
       status: dcLost ? 'nodc' : stuck ? 'fail' : 'ok',
       live: bkr === 'open' ? 'open' : bkr === 'failed' ? 'failed to open' : dcLost ? 'closed — cannot trip' : 'closed',
@@ -132,14 +194,14 @@ export default function ChainView({ config, sim, state, coord }) {
     <section className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-3" aria-label="Protection chain">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-gray-700">Protection chain</h2>
+          <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
           <p className="text-xs text-gray-400">
             Every link must work for this terminal to clear the fault. Break one and replay.{' '}
             <span title={NERC_TIP} className="underline decoration-dotted cursor-help">In standards terms, a Protection System</span>{' '}
             (<a href={NERC_GLOSSARY} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-700 underline">NERC Glossary</a>).
           </p>
         </div>
-        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Terminal">
+        {!onRid && <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Terminal">
           {relayIds.map(id => (
             <button key={id} role="radio" aria-checked={id === rid} onClick={() => setRid(id)}
               className={`px-2 py-0.5 rounded text-xs font-bold border ${id === rid ? 'text-white' : 'bg-white'}`}
@@ -147,7 +209,7 @@ export default function ChainView({ config, sim, state, coord }) {
               {id}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
       <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2">
         {links.map((l, i) => <Link key={l.name} {...l} last={i === links.length - 1} />)}

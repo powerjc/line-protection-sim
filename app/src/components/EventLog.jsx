@@ -14,6 +14,8 @@ const KIND_STYLE = {
   rx:        'text-indigo-700',
   blocked:   'text-indigo-800 font-semibold',
   channel:   'text-orange-700 font-semibold',
+  instrument: 'text-orange-700 font-semibold',
+  lop:        'text-amber-700 font-bold',
   uncleared: 'text-red-800 font-bold',
 }
 
@@ -23,6 +25,8 @@ const VERDICT = {
   backup:          { label: 'Cleared by backup',       style: 'bg-blue-100 text-blue-800 border-blue-300' },
   miscoordination: { label: 'Miscoordination',         style: 'bg-orange-100 text-orange-800 border-orange-300' },
   uncleared:       { label: 'Fault NOT cleared',       style: 'bg-red-100 text-red-800 border-red-300' },
+  secure:          { label: 'No fault — no trip (secure)', style: 'bg-green-100 text-green-800 border-green-300' },
+  misoperation:    { label: 'Misoperation — tripped with no fault', style: 'bg-red-100 text-red-800 border-red-300' },
 }
 
 const NOTE_STYLE = { info: 'text-gray-600', warn: 'text-yellow-700', bad: 'text-orange-700 font-medium' }

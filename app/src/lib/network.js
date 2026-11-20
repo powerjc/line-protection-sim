@@ -61,6 +61,7 @@ export function activeTap(net, config) {
 //    | { kind: 'tapLV' } (the tap transformer's low-voltage bus)
 // Tap faults sit off the chain; their chain position is the tap point T.
 export function faultPosition(net, loc) {
+  if (loc?.kind === 'none') return null // no power-system fault (an instrument failure only)
   if (loc.kind === 'bus') return net.buses[loc.bus].pos
   if (loc.kind === 'tap' || loc.kind === 'tapLV') {
     const id = net.lineOrder.find(l => net.lines[l].tap)
@@ -80,6 +81,7 @@ export function forwardDistance(net, relay, pf) {
 }
 
 export function describeLocation(net, loc) {
+  if (loc.kind === 'none') return 'No power-system fault'
   if (loc.kind === 'bus') return `Bus ${loc.bus}`
   if (loc.kind === 'tap') return `Tap T section @ ${Math.round(loc.frac * 100)}% from T`
   if (loc.kind === 'tapLV') return 'Tap T low-voltage bus (behind the tap transformer)'

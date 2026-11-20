@@ -5,6 +5,10 @@
 //   study: `faultId` (+ optional `studyChannel` for the A–B pilot channel)
 //   coord: `fault` location + optional `scenario` (failures, channels)
 //   diff:  Differential tab (uses `faultSpec`)
+//   bay:   Bay tab (Foundations module): like coord (`fault`, `scenario`), plus
+//          `bayRelay` (the terminal shown, default AB). Bay lessons also state
+//          `expect.measured`: { rid, zOhm, dir } — what the relay measures at the
+//          fault (primary ohms, +1 forward / -1 reverse / 0 none)
 // Either tab: optional `faultSpec` { type: '3PH' | 'AG', rf } (fault type + resistance)
 // Coordination lessons state the verdict their setup should produce in
 // `expect`; sim.test.js runs every lesson to keep the story true.
@@ -19,7 +23,7 @@ const sources = (cfg, sirs) => {
   for (const b of cfg.network.buses) if (b.id in sirs) b.sir = sirs[b.id]
 }
 
-export const TRACKS = ['Why protection matters', 'Basics', 'Coordination', 'Pilot schemes', 'Sources & phasors', 'Ground faults & Rf', 'Tapped lines', 'Current differential']
+export const TRACKS = ['Foundations', 'Why protection matters', 'Basics', 'Coordination', 'Pilot schemes', 'Sources & phasors', 'Ground faults & Rf', 'Tapped lines', 'Current differential', 'Bus differential']
 
 // Line tap on A–B (feature 'tap') with lesson-specific sizes
 const tap = (cfg, t) => { cfg.features.tap = true; Object.assign(cfg.network.lines.find(l => l.id === 'AB').tap, t) }
@@ -28,7 +32,186 @@ const tap = (cfg, t) => { cfg.features.tap = true; Object.assign(cfg.network.lin
 // exist), a pilot scheme on A–B, and the consequences card on
 const why = (cfg, scheme) => { adjacent(cfg); pilot(cfg, scheme); cfg.features.consequences = true }
 
+// Bus differential: the Foundations setup plus the 87B module on bus B
+const busdiff = cfg => { foundations(cfg); cfg.features.busdiff = true }
+
+// Foundations: the Bay tab, the full chain (so remote backup exists) and
+// source impedance behind X and Y (so bus voltage sags as it does in a real
+// fault). Display values: typical 138 kV, 20 Ω line, CT 1200:5, VT 1200:1.
+const foundations = cfg => {
+  cfg.features.foundations = true
+  adjacent(cfg)
+  sources(cfg, { X: 0.5, Y: 0.5 })
+}
+
 export const LESSONS = [
+  // ───────────── Foundations ─────────────
+  {
+    id: 'f-cannot-see',
+    track: 'Foundations',
+    title: 'The relay cannot see the line',
+    tab: 'bay',
+    setup: foundations,
+    fault: { kind: 'line', line: 'AB', frac: 0.5 },
+    expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 10, dir: 1 } },
+    intro: 'Relay 21-AB sits in the control house at station A. Line A–B runs off toward station B; the relay can’t see it, and it can’t see the fault. Everything it knows arrives on wires: three currents from the CT, three voltages from the VT, the breaker’s 52a contact saying whether the breaker is closed, and, with a pilot scheme, a signal from the other end. This tab draws one terminal as a station bay so you can follow each of those inputs.',
+    watch: [
+      'Step once to the fault (0 ms). On the drawing, 1.99 kA flows from the bus toward the line. The CT turns it into 8.3 A on its secondary wiring, and the VT turns the collapsed 19.9 kV phase voltage into 16.6 V.',
+      'What the relay sees: the same quantities three ways: on the line, at the relay terminals, and as the relay computes them back. Here they agree, so there are no ≠ marks.',
+      'From V and I the relay works out Z = 10.0 Ω forward: half of the 20 Ω line. Zone 1 trips at 17 ms; 52-AB opens at 67 ms, its 52a contact goes open and the current stops.',
+    ],
+    tryIt: [
+      'In the Protection chain, set the VT fuse to All blown and step to the fault. Nothing changed on the line, but the relay’s voltage is zero: Z reads 0 Ω with no direction, so 21-AB can’t decide and never trips. 21-BA clears its end; station A keeps feeding the fault, and in this model it is never cleared.',
+      'Put the fuse back and pick terminal BA: the same fault from the other end. Its bus voltage is 24.9 kV and its current 2.49 kA, and it also measures 10.0 Ω from its own end.',
+    ],
+    takeaway: 'A relay only knows what its inputs tell it: currents, voltages, breaker status and, with a scheme, the remote end. If an input is missing or wrong, the relay makes the wrong decision about a perfectly real fault. The rest of this track takes those inputs one at a time.',
+  },
+  {
+    id: 'f-ct',
+    track: 'Foundations',
+    title: 'CTs create the current view',
+    tab: 'bay',
+    setup: foundations,
+    fault: { kind: 'line', line: 'AB', frac: 0.95 },
+    expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 19, dir: 1 } },
+    intro: 'A current transformer (CT) has the line conductor as its primary. A 1200:5 CT makes 5 A on its secondary when 1200 A flows on the line. The relay multiplies the secondary current back up by the ratio it is set to, so that setting has to match the CT that is actually installed.',
+    watch: [
+      'Fault at 95% of A–B: 1.63 kA on the line, 6.8 A at the relay terminals, and the relay computes 1.63 kA back.',
+      'Z = 19.0 Ω: 95% of the 20 Ω line, past Zone 1’s 80% reach (16 Ω). 21-BA trips Zone 1 at its end; 21-AB waits for Zone 2 and trips at 317 ms.',
+    ],
+    tryIt: [
+      'In the CT card, set the ratio to 1500:5 (the CT is still 1200:5). The relay multiplies by 300 instead of 240 and computes 2.03 kA for the same 1.63 kA. Z reads 15.2 Ω and Zone 1 trips at 17 ms. Faster here, but Zone 1 now reaches 100% of the line instead of 80%: no safety margin left.',
+      'Set it to 2000:5 and move the fault to line B–Y at 10%, outside this line. The relay computes 12.7 Ω instead of 21.2 Ω and trips Zone 1 for a fault on the next line: a miscoordination from one wrong number in a settings file.',
+    ],
+    takeaway: 'The relay’s current is the secondary current times its ratio setting. A ratio error scales every impedance the relay measures, so it moves every zone reach. That is why CT ratios are verified at commissioning and checked against the settings.',
+  },
+  {
+    id: 'f-polarity',
+    track: 'Foundations',
+    title: 'Direction is part of the measurement',
+    tab: 'bay',
+    setup: foundations,
+    fault: { kind: 'line', line: 'AB', frac: 0.1 },
+    scenario: { ctReversed: { AB: 'abc' } },
+    expect: { verdict: 'backup', measured: { rid: 'AB', zOhm: 2, dir: -1 } },
+    intro: 'A CT’s polarity marks (the two dots on the drawing) define which way is “into the line”: current entering the marked primary side, here the bus side, leaves the marked secondary lead, and the relay calls that forward. Swap the secondary leads and the relay gets exactly the right amount of current, pointing the wrong way. Here the CT itself is fine, but its leads are swapped at the terminal block in front of 21-AB, a classic commissioning miss.',
+    watch: [
+      'Step to the fault, 10% from A. On the line, 2.49 kA flows from bus A into the line. At the relay terminals the current is turned around (180° from the line current), and the relay computes the fault as reverse.',
+      'Magnitudes, voltage and |Z| = 2.0 Ω are all correct; only the direction is wrong, and that is enough. 21-AB believes the fault is behind it and stays quiet.',
+      'Station A’s end is cleared by remote backup: 21-XA’s Zone 2 at 317 ms, so line X–A goes out too. Cleared at 367 ms.',
+    ],
+    tryIt: [
+      'Set the polarity to Reversed (phase A): only one phase swapped. The relay now sees residual current (3I0 = 4.98 kA) that isn’t on the line, picks a ground loop (AG) for a three-phase fault, and measures 0.86 Ω instead of 2.0 Ω, still reverse.',
+      'Back to Reversed (all), move the fault behind the relay to line X–A at 90%. Now 21-AB sees a fault behind it as forward and trips Zone 1 at 17 ms for a fault that isn’t on its line: a miscoordination.',
+      'Set the polarity to Correct and replay the fault at 10%: 21-AB trips Zone 1 at 17 ms and line X–A stays in service.',
+    ],
+    takeaway: 'Direction is not a separate input: the relay derives it from the angle of the current against the voltage. Reverse the polarity and the relay fails both ways: it won’t trip for faults on its line, and it trips for faults behind it. Polarity checks with load current at commissioning catch this before a fault does.',
+  },
+  {
+    id: 'f-samples',
+    track: 'Foundations',
+    title: 'A phasor takes a cycle to measure',
+    tab: 'bay',
+    setup: foundations,
+    fault: { kind: 'line', line: 'AB', frac: 0.5 },
+    expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 10, dir: 1 } },
+    intro: 'The relay never sees a smooth wave either. Its inputs are sampled (here 16 times a cycle; real relays sample faster) and turned into numbers, and the protection works on phasors, magnitude and angle, estimated from the last cycle of samples. When the fault starts, that estimate needs time to catch up. The Oscillography panel on this tab is the relay’s event report.',
+    watch: [
+      'In Oscillography choose Fault inception and step through. At 0 ms the line current jumps to 1.99 kA and the voltage at A collapses to 19.9 kV. The current carries a DC offset that dies away in a few cycles (τ ≈ 10 ms, from the line’s X/R).',
+      'On CT secondary, the dots are the relay’s samples. The black line is the magnitude the relay estimates from its last cycle of samples (the shaded window): it climbs in 16 steps as fault samples replace pre-fault ones, and reaches the true magnitude (dashed) after one cycle, 16.7 ms. The offset makes it wobble a little on the way; VT secondary shows the same for the voltage, falling.',
+      'Zone 1 picks up at 17 ms, once the estimate has settled: the model’s 1-cycle relay time stands for this filtering. 21-AB trips, and when 52-AB opens at 67 ms each phase stops at its own current zero.',
+    ],
+    tryIt: [
+      'Press Play at 0.05× speed: the shaded window slides along the samples and the estimate follows it. Whole event shows the full record; Around cursor follows the playback.',
+      'Pick terminal BA: the same fault from the other end, with its own samples and its own estimate.',
+      'Think of the samples as data: in a digital substation, a merging unit in the yard samples the CTs and VTs and sends these same numbers over the network as IEC 61850 sampled values. Lose the stream and the relay has nothing to estimate from.',
+    ],
+    takeaway: 'Relays work on numbers, not waves: samples, then phasor estimates. Filtering a clean phasor out of a fault waveform takes about a cycle, which is a large part of why even an “instantaneous” zone takes time. It is also the bridge to digital substations, where those samples arrive as network messages.',
+  },
+  {
+    id: 'f-vt',
+    track: 'Foundations',
+    title: 'VTs create the voltage view',
+    tab: 'bay',
+    setup: foundations,
+    fault: { kind: 'line', line: 'AB', frac: 0.1 },
+    expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 2, dir: 1 } },
+    intro: 'A voltage transformer (VT) steps the 79.7 kV phase voltage down to 66.4 V (1200:1; 115 V line-to-line). During a fault the voltage at the relay collapses, and the closer the fault, the deeper it goes. The angle matters as much as the magnitude: the relay compares each current with its voltage.',
+    watch: [
+      'Step back to before the fault (−50 ms): 79.7 kV on the line, 66.4 V at the relay, three phases 120° apart.',
+      'At the fault, 10% from A, station A’s voltage collapses to 4.98 kV (4.1 V secondary): the relay is electrically close to the fault.',
+    ],
+    tryIt: [
+      'Move the fault to 50%, then 90%: Va at the relay recovers to 19.9 kV, then 29.9 kV. Pick terminal BA to see the same faults from the other end.',
+      'With the fault at 95%, set the VT ratio to 1000:1 (the VT is still 1200:1). The relay computes 0.83× the real voltage, Z reads 15.8 Ω instead of 19.0 Ω, and Zone 1 trips: an overreach, the same kind of reach error as a wrong CT ratio.',
+      'Set the ratio back, move the fault to 50% and blow the phase-A fuse only. Va reads 0 V and the AB loop voltage the relay computes is wrong: Z reads 5.8 Ω instead of 10.0 Ω.',
+    ],
+    takeaway: 'The relay’s voltage is the VT secondary times its ratio setting, through a fuse and wiring that can fail. Distance protection needs that voltage: a voltage error is an impedance error, and losing the voltage leaves the relay blind.',
+  },
+  {
+    id: 'f-z',
+    track: 'Foundations',
+    title: 'Distance needs both voltage and current',
+    tab: 'bay',
+    setup: cfg => { foundations(cfg); cfg.features.load = true },
+    fault: { kind: 'line', line: 'AB', frac: 0.5 },
+    expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 10, dir: 1 } },
+    intro: 'A distance relay divides the voltage by the current at its terminals: Z = V / I. On a healthy line that is the load impedance: large. During a fault it is the line impedance between the relay and the fault: small, and in proportion to the distance. That one number is why it is called distance protection.',
+    watch: [
+      'Before the fault (−50 ms) the line carries 384 A of load: the relay sees about 204 Ω (Load Z row), far outside any zone.',
+      'At the fault at 50%: 19.9 kV ÷ 1.99 kA = 10.0 Ω at 75°, exactly half the 20 Ω line. Zone 1 (80%, 16 Ω) trips at 17 ms.',
+      'The secondary column shows the same thing in relay units: 16.6 V ÷ 8.3 A = 2.0 Ω. Settings are often written in secondary ohms: this whole line is 4 Ω secondary.',
+    ],
+    tryIt: [
+      'Move the fault to 10% and to 90%: Z reads 2.0 Ω and 18.0 Ω. The current alone hardly tells you where the fault is (2.49 kA vs 1.66 kA); the ratio V / I does.',
+      'Move the fault to line B–Y at 10%: Z = 21.2 Ω, beyond the 20 Ω line. Zone 1 doesn’t reach it; only Zone 2 (24 Ω) does, after its time delay, and B–Y’s own relays clear it first.',
+    ],
+    takeaway: 'Neither input is enough on its own: the current says something is wrong, the voltage says how close it is, and Z = V / I combines them into a distance. That is why a distance relay needs both its CTs and its VTs, and why an error in either one is a reach error.',
+  },
+  {
+    id: 'f-lop',
+    track: 'Foundations',
+    title: 'Loss of potential is not a power-system fault',
+    tab: 'bay',
+    setup: cfg => { foundations(cfg); cfg.features.load = true },
+    fault: { kind: 'none' },
+    scenario: { vtFuse: { AB: 'abc' } },
+    expect: { verdict: 'secure', measured: { rid: 'AB', zOhm: 0, dir: 1 } },
+    intro: 'A VT fuse (or the small breaker in the VT secondary wiring) can blow on a perfectly healthy line. Nothing changes on the power system, but the relay’s voltage drops to zero, and to a distance element zero volts with current flowing looks like a bolted fault right at the relay. Loss-of-potential (LOP) logic tells the two apart: in a real fault the current changes too; when a fuse blows, it doesn’t.',
+    watch: [
+      'At 0 ms there is no fault: the line still carries 384 A of load and the voltage at bus A is still 78.5 kV. Only the VT fuse at 21-AB blows, and the relay’s voltage drops to 0 V.',
+      'What the relay sees: Z = V / I = 0 Ω, and its memory voltage says forward. That is exactly what a bolted fault at its own terminals would look like.',
+      '21-AB’s LOP logic sees the voltage collapse with no change in current: not a power-system fault. It blocks distance and raises an alarm. Verdict: no trip (secure).',
+    ],
+    tryIt: [
+      'In the chain, untick LOP blocking on the relay card and replay: Zone 1 trips 52-AB at 17 ms on load current. Line A–B goes out of service because of a blown fuse: a misoperation.',
+      'Tick LOP blocking back on and set the fuse to Phase A blown. The AB loop still has Vb, so Z moves to about 118 Ω, outside every zone at this load, and LOP asserts anyway.',
+      'With all three fuses blown, give the system a real fault: fault location Line A–B, then 10%. The fuse was already gone, so 21-AB is blind. 21-BA trips its own end and station A’s end waits for 21-XA’s Zone 2: cleared at 367 ms. That is why LOP alarms: until someone replaces the fuse, the line has lost part of its protection.',
+    ],
+    takeaway: 'A failed measurement is not a power-system fault, and the relay can only tell them apart by their signatures: a real fault changes the current; a blown fuse only removes the voltage. LOP logic blocks the elements that need voltage and raises an alarm so the VT gets fixed before a real fault arrives. Current-only protection (87L, overcurrent) keeps protecting meanwhile.',
+  },
+  {
+    id: 'f-trip',
+    track: 'Foundations',
+    title: 'A trip command is not an open breaker',
+    tab: 'bay',
+    setup: foundations,
+    fault: { kind: 'line', line: 'AB', frac: 0.1 },
+    scenario: { breakerFail: ['AB'] },
+    expect: { verdict: 'backup', measured: { rid: 'AB', zOhm: 2, dir: 1 } },
+    intro: 'Relay decision, output contact, trip coil, breaker mechanism, current interruption: five separate steps, and the relay controls only the first two. Here 52-AB’s mechanism is stuck.',
+    watch: [
+      '21-AB decides at 17 ms: Zone 1 TRIP. The trip wire to the trip coil (TC) lights up: the command was delivered.',
+      'The breaker never opens. Its 52a contact still says closed and 2.49 kA keeps flowing through the CT. The relay did its job; the fault is still there.',
+      'Remote backup clears it: 21-XA’s Zone 2 at 317 ms from station X, cleared at 367 ms, and line X–A goes out with it.',
+    ],
+    tryIt: [
+      'In the chain, tick Opens when tripped back on and untick Trip circuit Intact instead. 21-AB still trips at 17 ms, but the dashed wire shows the command never reaches the coil. Same result, a different broken link.',
+      'Restore both and replay: 52-AB opens at 67 ms, and the 52a contact and the current agree.',
+    ],
+    takeaway: 'A trip is a request. Whether the current stops depends on the trip circuit, the DC supply, the breaker mechanism and the arc being interrupted. Breaker-failure protection (not modelled here) watches the current, not the 52a contact, because only the current proves the breaker opened.',
+  },
+
   // ───────────── Why protection matters ─────────────
   {
     id: 'why-cost',
@@ -660,6 +843,53 @@ export const LESSONS = [
     ],
     takeaway: 'Differential clears the whole line at high speed from both ends, with no end-zone problem and no coordination margin. Distance stays behind it for when the channel or the differential relay is lost.',
   },
+
+  // ───────────── Bus differential ─────────────
+  {
+    id: 'bus-basics',
+    track: 'Bus differential',
+    title: 'Bus differential: what goes in must come out',
+    tab: 'bay',
+    bayRelay: 'BA',
+    setup: busdiff,
+    fault: { kind: 'bus', bus: 'B' },
+    expect: { verdict: 'selective', measured: { rid: 'BA', zOhm: 0, dir: -1 } },
+    intro: 'Bus B joins two lines. A fault on the bus itself is behind both line relays at B (they look out along their lines), so without bus protection only the far ends’ Zone 2 clears it, slowly, and both lines go out anyway. A bus differential zone (87B) measures every current into the bus through a CT on each feeder: what goes in must come out, unless the fault is on the bus.',
+    watch: [
+      'Step to the fault. In the 87B card, 1.59 kA comes in from line A–B and 3.62 kA from line B–Y. Nothing goes out, so the sum (operate) is about 5.2 kA: 100% of the restraint.',
+      '87B operates and trips both bus breakers at 17 ms; the fault is cleared at 67 ms.',
+      'On the bay drawing, the 87B CT sits on the line side of 52-BA and the line relay’s CT on the bus side. Each zone reaches past the breaker to the other’s CT, so the zones overlap and there is no gap at the breaker. 21-BA sees this fault behind it (reverse) and stays out.',
+    ],
+    tryIt: [
+      'Move the fault to line B–Y at 10%. Current from line A–B flows through the bus and out to B–Y: the two 87B currents (1.56 kA each) cancel, the sum is 0, and 87B restrains. B–Y’s own relays clear the fault.',
+      'Back at bus B, untick ⚙ Settings → Modules → Bus differential and replay: the far ends’ Zone 2 (21-AB and 21-YB) clears the bus fault at 367 ms instead of 67 ms.',
+    ],
+    takeaway: 'Bus differential is Kirchhoff’s current law used as protection: around a healthy node the currents sum to zero. It is fast and selective, and it depends on every CT around the bus being right, which is the next lesson.',
+  },
+  {
+    id: 'bus-polarity',
+    track: 'Bus differential',
+    title: 'One reversed CT trips the bus',
+    tab: 'bay',
+    bayRelay: 'bus:B',
+    setup: cfg => { busdiff(cfg); cfg.features.load = true },
+    fault: { kind: 'line', line: 'BY', frac: 0.1 },
+    scenario: { ctReversed: { 'bus:BY': 'abc' } },
+    expect: { verdict: 'miscoordination', measured: { rid: 'BA', zOhm: 1.2, dir: -1 } },
+    intro: 'The 87B CT on 52-BY was wired backwards (or replaced and never polarity-checked). Nothing has tripped yet, but the bus differential has been seeing it all along: with load flowing through the bus, a reversed CT reports load leaving as load arriving. This view shows the whole bus: every feeder, its CTs, and the 87B relay adding them up.',
+    watch: [
+      'Step back to before the fault (−50 ms): 384 A of load comes in from line A–B and leaves to line B–Y. The reversed CT reports it as coming in, so 87B sees 769 A of operate current with no fault anywhere: 100% of restraint, just under the 797 A pickup. On the oscillography the two CT secondaries add instead of cancelling, and the operate trace sits just under the pickup line.',
+      'Then a fault on line B–Y at 10%, outside the zone: 1.56 kA in and the same out, reported as 3.11 kA of differential. 87B trips both bus breakers at 17 ms: bus B goes dark and line A–B is lost for a fault on line B–Y, a miscoordination. 21-YB’s Zone 2 clears the far end at 367 ms.',
+    ],
+    tryIt: [
+      'Set 52-BY’s polarity to Correct in the 87B card: before the fault the operate trace is flat at zero, and at the fault the currents cancel and 87B restrains.',
+      'Leave it reversed, choose fault location No fault, and lower ⚙ Settings → Modules → 87B pickup to 0.15 pu (598 A). The bus trips on load at 17 ms with no fault anywhere: a misoperation. (In a no-fault run the instrument failure starts at t = 0: here, the zone goes into service with the CT reversed.)',
+      'Pickup back to 0.20 pu, move the fault onto bus B, inside the zone. The reversed CT now subtracts: operate is 2.19 kA against about 5.2 kA of restraint (42%), under the 50% slope. 87B fails to trip a real bus fault, and remote Zone 2 clears it at 367 ms.',
+    ],
+    takeaway: 'A reversed bus CT shows itself under load long before a fault: a standing differential of twice the load current through that feeder. That is what in/out load checks at commissioning, and a differential-current alarm in service, look for. Miss it, and the bus trips for the next external fault (or on load, once the load grows) and can fail to trip for a real bus fault.',
+  },
+
+
 ]
 
 export const lessonById = id => LESSONS.find(l => l.id === id)

@@ -13,17 +13,20 @@ import FaultResults from './components/FaultResults'
 import DifferentialView from './components/DifferentialView'
 import SettingsPanel from './components/SettingsPanel'
 import CoordinationView from './components/CoordinationView'
+import BayView from './components/BayView'
 import { activeZones } from './lib/protection'
 import { ChannelSelect, SchemeSelect, FaultSpecPicker } from './components/ScenarioPanel'
 
 const TABS = [
   { id: 'coord', label: 'Coordination' },
+  { id: 'bay', label: 'Bay', feature: 'foundations' },
   { id: 'study', label: 'Fault Study' },
   { id: 'diff', label: 'Differential', feature: 'diff' },
 ]
 
 export default function App() {
   const [tabRaw, setTab] = useState('coord')
+  const [bayRid, setBayRid] = useState('AB') // Bay tab terminal (lessons can set it)
   const [timeUnit, setTimeUnit] = useState(loadUnitPref)
   // Learner level: the remembered choice seeds the config at start and on Reset
   const [levelPref, setLevelPref] = useState(loadLevelPref)
@@ -89,6 +92,7 @@ export default function App() {
       setStudyChannel(l.studyChannel ?? 'ok')
       setStudySpec({ ...DEFAULT_SPEC, ...l.faultSpec })
     } else {
+      if (l.tab === 'bay') setBayRid(l.bayRelay ?? 'AB')
       coord.setFaultLoc(l.fault)
       coord.loadScenario(l.scenario ?? {})
       coord.setSpec({ ...DEFAULT_SPEC, ...l.faultSpec })
@@ -139,6 +143,8 @@ export default function App() {
 
       {tab === 'diff' ? (
         <DifferentialView config={config} spec={studySpec} onSpec={setStudySpec} onUpdateDiff={updateDiff} />
+      ) : tab === 'bay' ? (
+        <BayView config={coordConfig} coord={coord} rid={bayRid} onRid={setBayRid} />
       ) : tab === 'coord' ? (
         <CoordinationView config={coordConfig} coord={coord}
           failuresHint={lesson?.tab === 'coord' && lesson.tryIt.some(t => t.includes('Failures')) ? lesson.id : null}

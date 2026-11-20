@@ -8,6 +8,8 @@ export function WelcomeCard({ audience, onAudience, onStartLesson, onClose }) {
   const [min, setMin] = useState(false)
   const chosen = AUDIENCES.find(a => a.id === audience) ?? AUDIENCES[0]
   const lesson = LESSONS.find(l => l.id === chosen.firstLesson)
+  // Either audience can start one step earlier: what the relay actually sees
+  const basics = LESSONS.find(l => l.track === 'Foundations')
 
   return (
     <section className="mx-4 mt-4 rounded-xl border border-indigo-200 bg-indigo-50/60" aria-label="Welcome">
@@ -50,12 +52,18 @@ export function WelcomeCard({ audience, onAudience, onStartLesson, onClose }) {
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-400 mt-1">Learner level and modules (Consequences, 87L) are in ⚙ Settings.</p>
+            <p className="text-xs text-gray-400 mt-1">Learner level and modules (Consequences, Foundations, 87L) are in ⚙ Settings.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {lesson && (
               <button onClick={() => onStartLesson(lesson)} className="text-sm px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
                 Start lesson: {lesson.title} ▶
+              </button>
+            )}
+            {basics && (
+              <button onClick={() => onStartLesson(basics)} title="Foundations track: CTs, VTs and what the relay actually sees (opens the Bay tab)"
+                className="text-sm px-3 py-1 rounded-lg border border-indigo-300 text-indigo-700 bg-white hover:border-indigo-500">
+                Or start from the foundations: {basics.title}
               </button>
             )}
             <button onClick={onClose} className="text-sm px-3 py-1 rounded-lg border border-indigo-300 text-indigo-700 bg-white hover:border-indigo-500">

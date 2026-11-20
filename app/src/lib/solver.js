@@ -16,10 +16,13 @@
 
 import { C, ZERO, ONE, add, sub, mul, div, inv, scale, conj, abs, polar, solveLinear } from './complex'
 import { activeTap } from './network'
+import { relayInstruments, senseI, senseV, sameInstruments } from './instruments'
 
 const DEG = Math.PI / 180
 const SNAP = 1e-6       // fault this close to a line end sits on the bus
 export const I_MIN = 1e-6 // pu — below this a CT "carries" no fault current
+const V_MIN = 1e-9 // pu — below this the relay has no polarizing voltage
+const V_START = 0.3 // voltage collapse (share of memory) that starts a relay with a failed VT input
 const PH = [0, 1, 2]
 export const PHASE = ['A', 'B', 'C']
 // Prefault (memory) phase voltages: balanced, no load
@@ -268,7 +271,17 @@ const NO_CURRENT = [ZERO, ZERO, ZERO]
 // decides whether a relay "sees" the fault, which sources feed it, and the
 // phase selection; loop impedances use total V and I, as a relay does. The
 // memory polarizer is the prefault (all breakers closed) bus voltage.
-export function solveFault(net, config, loc, breakers = {}, spec = {}) {
+//
+// inst: instrument faults (lib/instruments, from instrumentFaults()). Each relay
+// measures through its own CTs/VTs: V/I, the fault component, the memory
+// polarizer and the load impedance are all what the relay sees. `prim` keeps
+// the primary truth at the relay's bus/CT for display.
+//
+// loc { kind: 'none' } is the healthy network (no power-system fault).
+// inst.memoryIntact: the VT failed at this instant, so the relay's memory
+// still holds the healthy pre-event voltage.
+export function solveFault(net, config, locIn, breakers = {}, spec = {}, inst = {}) {
+  const loc = locIn?.kind === 'none' ? null : locIn
   const unit = polar(1, config.lineAngleDeg * DEG)
   const sol = solveCore(net, config, loc, breakers, spec)
   // The healthy network carries current with prefault load, or with a tap (its load)
@@ -278,17 +291,32 @@ export function solveFault(net, config, loc, breakers = {}, spec = {}) {
 
   const relays = {}
   for (const [rid, r] of Object.entries(config.relays)) {
-    const Iabc = sol.relayI(r)
-    const Vabc = PH.map(p => sol.V(r.bus, p))
-    const healthy = now ? now.relayI(r) : NO_CURRENT
+    const ri = relayInstruments(inst, rid)
+    const primI = sol.relayI(r)
+    const primV = PH.map(p => sol.V(r.bus, p))
+    const Iabc = senseI(primI, ri)
+    const Vabc = senseV(primV, ri)
+    const healthy = senseI(now ? now.relayI(r) : NO_CURRENT, ri)
     const dI = PH.map(p => sub(Iabc[p], healthy[p]))
-    const mem = pre ? PH.map(p => pre.V(r.bus, p)) : E_ABC
+    const memRaw = pre ? PH.map(p => pre.V(r.bus, p)) : E_ABC
+    const riPre = inst.memoryIntact ? { ...ri, vtLive: [true, true, true] } : ri // prefault: before the VT failed
+    const mem = senseV(memRaw, riPre)
     // Prefault (load) impedance, positive sequence = Va / Ia
-    const Ipre = pre ? pre.relayI(r)[0] : ZERO
-    const Zl = abs(Ipre) > I_MIN ? div(pre.V(r.bus, 0), Ipre) : null
+    const Ipre = pre ? senseI(pre.relayI(r), ri)[0] : ZERO
+    const Vpre = pre ? senseV(PH.map(p => pre.V(r.bus, p)), riPre)[0] : ZERO
+    const Zl = abs(Ipre) > I_MIN ? div(Vpre, Ipre) : null
+    const Ipre0 = pre ? pre.relayI(r)[0] : ZERO
+    const primZl = abs(Ipre0) > I_MIN ? div(pre.V(r.bus, 0), Ipre0) : null
+    const k0 = relayK0(net, config, rid)
+    // A relay with a failed VT input also starts on the voltage change alone
+    const seen = measure(Vabc, Iabc, dI, mem, k0, unit, !ri.vtLive.every(Boolean))
+    // What the same relay would measure with ideal instruments (the truth the Bay tab compares against)
+    const ideal = sameInstruments(ri) ? seen : measure(primV, primI,
+      PH.map(p => sub(primI[p], now ? now.relayI(r)[p] : ZERO)), pre ? PH.map(p => pre.V(r.bus, p)) : E_ABC, k0, unit)
     relays[rid] = {
-      ...measure(Vabc, Iabc, dI, mem, relayK0(net, config, rid), unit),
+      ...seen,
       Vabc, Iabc, Zload: Zl && { R: Zl.re, X: Zl.im },
+      prim: { Vabc: primV, Iabc: primI, Z: ideal.Z, dir: ideal.dir, loop: ideal.loop, Zload: primZl && { R: primZl.re, X: primZl.im } },
     }
   }
 
@@ -310,12 +338,21 @@ export function solveFault(net, config, loc, breakers = {}, spec = {}) {
 // Z = (Vp − Vq) / (Ip − Iq). Direction is memory-polarized: the loop's
 // prefault voltage (mem) against its current rotated by the line angle.
 // Selection and "carrying" use the fault component dI (= Iabc without load).
-function measure(Vabc, Iabc, dI, mem, k0, unit) {
+//
+// vStart (a VT input has failed): the relay also starts on a collapse of its
+// voltage against memory (> V_START of it) with no change in current, as it
+// would see a blown fuse on a loaded line. `vStart` in the result marks that
+// start: voltage gone, current unchanged — the loss-of-potential signature.
+function measure(Vabc, Iabc, dI, mem, k0, unit, vStart = false) {
   const I3I0 = Iabc.reduce(add, ZERO)
-  const mags = dI.map(abs)
+  const dMax = Math.max(...dI.map(abs))
+  const byV = vStart && dMax <= I_MIN && Iabc.some(I => abs(I) > I_MIN)
+    && PH.some(p => abs(mem[p]) > V_MIN && abs(sub(mem[p], Vabc[p])) > V_START * abs(mem[p]))
+  const sel = byV ? Iabc : dI // with no fault component, select on the total (load) current
+  const mags = sel.map(abs)
   const iMax = Math.max(...mags)
-  const base = { V: Vabc[0], I: Iabc[0], I0x3: I3I0, carrying: iMax > I_MIN }
-  if (!base.carrying) return { ...base, Z: null, dir: 0, loop: null }
+  const base = { V: Vabc[0], I: Iabc[0], I0x3: I3I0, carrying: dMax > I_MIN, vStart: byV }
+  if (!base.carrying && !byV) return { ...base, Z: null, dir: 0, loop: null }
 
   const pick = (vals, cands) => {
     const top = Math.max(...vals)
@@ -330,7 +367,7 @@ function measure(Vabc, Iabc, dI, mem, k0, unit) {
     Vm = mem[p]
   } else {
     const pairs = [[0, 1], [1, 2], [2, 0]]
-    const [p, q] = pick(pairs.map(([p, q]) => abs(sub(dI[p], dI[q]))), pairs)
+    const [p, q] = pick(pairs.map(([p, q]) => abs(sub(sel[p], sel[q]))), pairs)
     loop = `${PHASE[p]}${PHASE[q]}`
     Vl = sub(Vabc[p], Vabc[q])
     Il = sub(Iabc[p], Iabc[q])
@@ -338,8 +375,10 @@ function measure(Vabc, Iabc, dI, mem, k0, unit) {
   }
   if (abs(Il) <= I_MIN) return { ...base, Z: null, dir: 0, loop }
   const Z = div(Vl, Il)
+  // No polarizing voltage at all (VT fuse failed before the fault): no direction
   const torque = mul(Vm, conj(mul(Il, unit))).re
-  return { ...base, loop, Z: { R: Z.re, X: Z.im }, dir: torque > 0 ? 1 : -1 }
+  const dir = abs(Vm) <= V_MIN ? 0 : torque > 0 ? 1 : -1
+  return { ...base, loop, Z: { R: Z.re, X: Z.im }, dir }
 }
 
 // Source impedance behind a relay (pu, magnitude — the system is homogeneous):

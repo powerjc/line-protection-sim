@@ -306,6 +306,30 @@ export default function SettingsPanel({ config, onLevel, onUpdateTap, onUpdate, 
               </div>
             )}
             <label className="flex items-start gap-2 py-1 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={!!config.features?.foundations}
+                onChange={e => onUpdateFeature('foundations', e.target.checked)} />
+              <span>
+                <span className="text-sm text-gray-700 font-medium">Foundations: bay view</span>
+                <span className="block text-xs text-gray-400">Adds a Bay tab: one terminal drawn as a station bay (breaker, CT, VT, relay, trip coil, DC, channel), what the relay sees vs what is on the line, and the protection chain with CT and VT failures</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 py-1 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={!!config.features?.busdiff}
+                onChange={e => onUpdateFeature('busdiff', e.target.checked)} />
+              <span>
+                <span className="text-sm text-gray-700 font-medium">Bus differential (87B)</span>
+                <span className="block text-xs text-gray-400">A low-impedance differential zone around bus B, on CTs on the line side of its breakers (overlapping the line zones). Needs Adjacent lines on and Infeed off{config.features?.foundations ? '' : '; the Bay tab (Foundations) shows its CTs'}</span>
+              </span>
+            </label>
+            {config.features?.busdiff && (
+              <div className="mt-1 pl-6">
+                <NumberSetting label="87B pickup" value={config.busdiff?.pickupPu ?? 0.2} min={0.05} max={2} step={0.05} unit="pu"
+                  onChange={v => onUpdate('busdiff', { ...config.busdiff, pickupPu: v })} />
+                <NumberSetting label="87B slope" value={config.busdiff?.slopePct ?? 50} min={10} max={90} step={5} unit="%"
+                  onChange={v => onUpdate('busdiff', { ...config.busdiff, slopePct: v })} />
+              </div>
+            )}
+            <label className="flex items-start gap-2 py-1 cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={!!config.features?.diff}
                 onChange={e => onUpdateFeature('diff', e.target.checked)} />
               <span>

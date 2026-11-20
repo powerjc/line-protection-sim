@@ -15,8 +15,10 @@ An interactive, browser-based training simulator for transmission line protectio
 - **Line current differential (87L):** percentage differential characteristic, line charging current, CT error, and 87L in the clearing sequence alongside distance
 - **Why it matters:** an optional consequences card (clearing time against a critical clearing time, relative fault duty and arc energy, outage extent) and failures across the protection chain (relay, breaker, station DC supply, teleprotection channel)
 - **Learner levels and audiences:** Basic / Intermediate / Advanced feature groups, and a welcome path for people who work around protection (networks, SCADA, commissioning)
+- **Foundations (bay view):** a Bay tab that draws one terminal as a station bay (breaker, CT, VT and fuse, relay, trip coil, 52a, DC, channel) and shows what is on the line, what the instruments deliver and what the relay computes side by side, with CT polarity, CT/VT ratio-setting and VT fuse failures to inject, a synthesized event report (oscillography: waveforms, relay samples, one-cycle phasor estimate, logic), and loss-of-potential logic (a blown VT fuse on a healthy line)
+- **Bus differential (87B):** a low-impedance zone around bus B on CTs at the line side of its breakers (overlapping the line zones): what goes in must come out, a bus view with every feeder's CTs and an operate/restraint trace, and what one reversed CT does to it (a standing differential on load)
 - **Tapped lines:** an unprotected load tap on the line: tap-section faults fed from both ends (infeed underreach), faults behind the tap transformer, and the tap load as unmeasured 87L current
-- **31 guided lessons** in eight tracks, from "What a fault costs" and "Zone 1: instantaneous, but short" to "Load + Rf: the sending end overreaches"
+- **41 guided lessons** in ten tracks, from "The relay cannot see the line", "What a fault costs" and "Zone 1: instantaneous, but short" to "Load + Rf: the sending end overreaches"
 
 Everything advanced is behind ⚙ Settings (learner level, individual features, modules) and off by default, so a first-time user sees a simple two-relay line.
 
@@ -45,7 +47,8 @@ The production build is a static site. **GitHub Pages:** `.github/workflows/page
 - Impedances are per-unit of the base line A–B; all lines and sources share the line angle unless a Z0 angle is set; the network is a chain (X–A–B–Y), with an optional tap on line A–B
 - The tap is an unprotected *load* tap only (no source tap, no three-terminal line yet); its transformer protection is a fixed clearing time
 - Steady-state phasors only: no transients, CVT or CT saturation dynamics (CT error is a fixed magnitude error), no load-encroachment trips
-- Relays are idealized: a simple phase selector, exact measurement, fixed operate time
+- Relays are idealized: a simple phase selector, exact measurement (apart from injected instrument faults), fixed operate time
+- Bay tab values (138 kV, 20 Ω line, CT 1200:5, VT 1200:1) are typical and illustrative; the engine works in per-unit
 - Consequences are relative and illustrative: fault duty and arc energy are multiples of a fast clear, and the critical clearing time (default 12 cycles) is a teaching value; real ones come from stability studies of the actual system
 - It's a teaching tool, not a setting-calculation tool. Don't use it to set real relays.
 

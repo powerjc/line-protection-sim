@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { defaultConfig, migrateConfig, coordinationConfig } from './schema'
+import { defaultConfig, migrateConfig, coordinationConfig, withInfeed } from './schema'
 import { buildNetwork, faultPosition, relayGeometry, forwardDistance } from './network'
 import { zoneReachPu, zoneRReachPu } from './protection'
 import { solveFault, impedanceBehind } from './solver'
@@ -13,6 +13,9 @@ import { LESSONS, TRACKS } from './lessons'
 import { LEVELS, AUDIENCES, LEVEL_FEATURES, trackLabel, levelOf, levelFeatures, withLevel, configForLevel } from './levels'
 import { runDifferential } from './differential'
 import { costsAt, outageExtent } from './consequences'
+import { busZone, busDiffElement } from './busdiff'
+import { buildTrace, valueAt, dftAt, phasorRms, busTrace, SAMPLES_PER_CYCLE } from './waveforms'
+import { instrumentFaults, BAY_BASE, baseAmps, bayQuantities, relayInstruments } from './instruments'
 
 const ms = t => Math.round(t * 10000) / 10 // s → ms, 0.1 ms resolution
 const zone = (cfg, rid, zid) => cfg.relays[rid].zones.find(z => z.id === zid)
@@ -188,7 +191,7 @@ describe('schema migration', () => {
     }
     const m = migrateConfig(v1)
     expect(m.lineAngleDeg).toBe(70)
-    expect(m.version).toBe(12)
+    expect(m.version).toBe(14)
     expect(m.relays.AB.zones[1]).toEqual({ direction: 'forward', id: 2, reach: 130, rReach: 150, delayCycles: 21, enabled: true })
     expect(m.relays.AB.zones[2].direction).toBe('reverse')
   })
@@ -200,7 +203,7 @@ describe('schema migration', () => {
     delete v2.features; delete v2.pilot; delete v2.schemes
     for (const r of Object.values(v2.relays)) r.zones = r.zones.filter(z => z.direction !== 'reverse').map(({ delayCycles, direction, ...z }) => ({ ...z, delay: delayCycles / 60 }))
     const m = migrateConfig(v2)
-    expect(m.version).toBe(12)
+    expect(m.version).toBe(14)
     expect(m.schemes).toEqual({ XA: 'step', AB: 'step', BY: 'step' })
     expect(m.timing.ctiCycles).toBe(10)
     expect(m.relays.AB.zones[1].delayCycles).toBe(15)
@@ -234,7 +237,7 @@ describe('schema migration', () => {
     delete v10.features.consequences
     v10.features.diff = true
     const m = migrateConfig(v10)
-    expect(m.version).toBe(12)
+    expect(m.version).toBe(14)
     expect(m.consequences).toEqual({ cctCycles: 12 })
     expect(m.features.consequences).toBe(false)
     expect(m.features.diff).toBe(true)
@@ -246,14 +249,36 @@ describe('schema migration', () => {
     delete v11.features.tap
     v11.network.lines = v11.network.lines.map(({ tap, ...l }) => l)
     const m = migrateConfig(v11)
-    expect(m.version).toBe(12)
+    expect(m.version).toBe(14)
     expect(m.features.tap).toBe(false)
     expect(m.network.lines.find(l => l.id === 'AB').tap).toEqual({ at: 0.4, lead: 0.2, zt: 2.0, load: 0.1, clearCycles: 6 })
     expect(m.network.lines.filter(l => l.tap)).toHaveLength(1)
     expect(m).toEqual(defaultConfig())
   })
 
-  it('passes v12 through and rejects unknown versions', () => {
+  it('upgrades v12 to v13: Foundations module, off', () => {
+    const v12 = defaultConfig()
+    v12.version = 12
+    delete v12.features.foundations
+    const m = migrateConfig(v12)
+    expect(m.version).toBe(14)
+    expect(m.features.foundations).toBe(false)
+    expect(m).toEqual(defaultConfig())
+  })
+
+  it('upgrades v13 to v14: bus differential module, off, with default settings', () => {
+    const v13 = defaultConfig()
+    v13.version = 13
+    delete v13.features.busdiff
+    delete v13.busdiff
+    const m = migrateConfig(v13)
+    expect(m.version).toBe(14)
+    expect(m.features.busdiff).toBe(false)
+    expect(m.busdiff).toEqual({ pickupPu: 0.2, slopePct: 50 })
+    expect(m).toEqual(defaultConfig())
+  })
+
+  it('passes v14 through and rejects unknown versions', () => {
     const cfg = defaultConfig()
     expect(migrateConfig(cfg)).toBe(cfg)
     expect(() => migrateConfig({ version: 99 })).toThrow()
@@ -616,10 +641,17 @@ describe('single-line base system', () => {
 describe('lessons', () => {
   const setupOf = lesson => { const cfg = defaultConfig(); lesson.setup?.(cfg); return cfg }
 
-  it.each(LESSONS.filter(l => l.tab === 'coord').map(l => [l.id, l]))('%s produces its stated outcome', (_, lesson) => {
+  it.each(LESSONS.filter(l => l.tab === 'coord' || l.tab === 'bay').map(l => [l.id, l]))('%s produces its stated outcome', (_, lesson) => {
     const cfg = coordinationConfig(setupOf(lesson))
     const run = simulateFault(cfg, lesson.fault, lesson.scenario ?? {}, lesson.faultSpec)
     expect(run.outcome.verdict).toBe(lesson.expect.verdict)
+    const want = lesson.expect.measured
+    if (lesson.tab === 'bay') expect(want).toBeTruthy()
+    if (want) {
+      const m = atFault(run).meas[want.rid]
+      expect(Math.hypot(m.Z.R, m.Z.X) * BAY_BASE.zOhm).toBeCloseTo(want.zOhm, 1)
+      expect(m.dir).toBe(want.dir)
+    }
   })
 
   it('lessons that send you to Failures are Coordination lessons (the panel opens and is outlined there)', () => {
@@ -1010,7 +1042,7 @@ describe('learner levels', () => {
       prev = l.features
     }
     // Advanced = every distance feature; 87L is a separate module no level touches
-    expect(new Set(LEVELS.at(-1).features)).toEqual(new Set(known.filter(f => !['diff', 'consequences'].includes(f))))
+    expect(new Set(LEVELS.at(-1).features)).toEqual(new Set(known.filter(f => !['diff', 'consequences', 'foundations', 'busdiff'].includes(f))))
     expect(LEVEL_FEATURES).not.toContain('diff')
   })
 
@@ -1146,5 +1178,408 @@ describe('consequences', () => {
     if (!Number.isFinite(sim.events.find(e => e.kind === 'fault').state.faultI)) {
       expect(costsAt(sim, cfg).duty).toBeNull()
     }
+  })
+})
+
+describe('instrument layer (Foundations)', () => {
+  const AB = (frac) => ({ kind: 'line', line: 'AB', frac })
+  const withF = (tweak = c => c) => { const c = defaultConfig(); c.features.foundations = true; return tweak(c) }
+  const strip = run => run.events.map(e => [e.kind, ms(e.t), e.text])
+  const tripOf = (run, rid) => run.events.find(e => e.kind === 'trip' && e.rid === rid)
+
+  it('ideal instruments change nothing, and instrument faults need the module', () => {
+    const cases = [[AB(0.5), {}], [BY10, {}], [AB(0.95), { breakerFail: ['AB'] }]]
+    for (const [loc, sc] of cases) {
+      expect(strip(simulateFault(withF(), loc, sc))).toEqual(strip(simulateFault(defaultConfig(), loc, sc)))
+    }
+    const rev = { ctReversed: { BA: 'abc' }, vtFuse: { AB: 'abc' } }
+    expect(instrumentFaults(defaultConfig(), rev)).toEqual({})
+    expect(strip(simulateFault(defaultConfig(), AB(0.5), rev))).toEqual(strip(simulateFault(defaultConfig(), AB(0.5))))
+  })
+
+  it('keeps the primary truth beside what the relay sees', () => {
+    const cfg = withF()
+    const net = buildNetwork(cfg.network)
+    const ideal = solveFault(net, cfg, AB(0.5)).relays.AB
+    const rev = solveFault(net, cfg, AB(0.5), {}, {}, instrumentFaults(cfg, { ctReversed: { AB: 'abc' } })).relays.AB
+    expect(rev.prim.Iabc[0]).toEqual(ideal.Iabc[0])
+    expect(rev.Iabc[0].re).toBeCloseTo(-ideal.Iabc[0].re)
+    expect(ideal.dir).toBe(1)
+    expect(rev.dir).toBe(-1) // the physical fault is ahead; the relay thinks it's behind
+  })
+
+  it('a ratio-setting error is a reach error: CT set 1.25× actual → Z × 0.8, Zone 1 overreaches', () => {
+    const cfg = withF()
+    const net = buildNetwork(cfg.network)
+    const err = instrumentFaults(cfg, { ratioError: { AB: { ct: 1.25 } } })
+    const z = solveFault(net, cfg, AB(0.9)).relays.AB.Z
+    const zErr = solveFault(net, cfg, AB(0.9), {}, {}, err).relays.AB.Z
+    expect(Math.hypot(zErr.R, zErr.X) / Math.hypot(z.R, z.X)).toBeCloseTo(0.8)
+    // A fault at 95% of A–B looks like 76%: Zone 1 trips instantly instead of Zone 2
+    expect(tripOf(simulateFault(cfg, AB(0.95)), 'AB').zid).toBe(2)
+    expect(tripOf(simulateFault(cfg, AB(0.95), { ratioError: { AB: { ct: 1.25 } } }), 'AB').zid).toBe(1)
+  })
+
+  it('a reversed CT at B makes DCB send a false block on an internal fault', () => {
+    const cfg = withF(c => { c.features.pilot = true; c.schemes.AB = 'DCB'; return c })
+    const good = simulateFault(cfg, AB(0.95))
+    expect(tripOf(good, 'AB').logic).toBe('DCB')
+    const bad = simulateFault(cfg, AB(0.95), { ctReversed: { BA: 'abc' } })
+    expect(bad.events.some(e => e.kind === 'instrument' && e.rid === 'BA')).toBe(true)
+    expect(bad.events.some(e => e.kind === 'tx' && e.rid === 'BA')).toBe(true)
+    expect(tripOf(bad, 'AB').logic).toBe('step')
+    expect(ms(tripOf(bad, 'AB').t)).toBe(316.7)
+  })
+
+  it('a reversed CT at B makes 87L trip on a through-fault', () => {
+    const cfg = withF(c => { c.features.diff = true; c.features.adjacent = true; return c })
+    const run = simulateFault(coordinationConfig(cfg), BY10, { ctReversed: { BA: 'abc' } })
+    expect(run.events.some(e => e.logic === '87L')).toBe(true)
+    expect(run.outcome.verdict).toBe('miscoordination')
+    expect(simulateFault(coordinationConfig(cfg), BY10).events.some(e => e.logic === '87L')).toBe(false)
+  })
+
+  it('one reversed phase shows residual current on load', () => {
+    const cfg = withF(c => { c.features.load = true; return c })
+    const net = buildNetwork(cfg.network)
+    const healthy = solveFault(net, cfg, null).relays.AB
+    const wired = solveFault(net, cfg, null, {}, {}, instrumentFaults(cfg, { ctReversed: { AB: 'a' } })).relays.AB
+    expect(abs(healthy.I0x3)).toBeLessThan(1e-9)
+    expect(abs(wired.I0x3) / abs(wired.I)).toBeCloseTo(2) // 3I0 = −Ia + Ib + Ic = −2·Ia
+  })
+
+  it('a failed VT fuse leaves the relay without direction: distance cannot trip', () => {
+    const cfg = withF()
+    const run = simulateFault(cfg, AB(0.5), { vtFuse: { AB: 'abc' } })
+    expect(atFault(run).meas.AB.dir).toBe(0)
+    expect(tripOf(run, 'AB')).toBeUndefined()
+    expect(tripOf(run, 'BA').zid).toBe(1)
+  })
+
+  it('typical display base: 138 kV, 20 Ω line → 1 pu ≈ 3.98 kA; 4 Ω secondary for the whole line', () => {
+    expect(baseAmps()).toBeCloseTo(3984, 0)
+    expect(BAY_BASE.zOhm * BAY_BASE.ctRatio / BAY_BASE.vtRatio).toBe(4)
+  })
+
+  it('keeps the ideal-instrument measurement beside the relay\'s own', () => {
+    const cfg = withF()
+    const run = simulateFault(cfg, AB(0.5), { ctReversed: { AB: 'abc' } })
+    const m = atFault(run).meas.AB
+    expect(m.dir).toBe(-1)
+    expect(m.prim.dir).toBe(1)
+    expect(Math.hypot(m.prim.Z.R, m.prim.Z.X)).toBeCloseTo(0.5)
+    const ok = atFault(simulateFault(cfg, AB(0.5))).meas.AB
+    expect(ok.prim.Z).toEqual(ok.Z)
+  })
+})
+
+describe('Foundations lessons: try-this claims', () => {
+  const setupOf = l => { const cfg = defaultConfig(); l.setup?.(cfg); return coordinationConfig(cfg) }
+  const L = id => LESSONS.find(l => l.id === id)
+  const AB = f => ({ kind: 'line', line: 'AB', frac: f })
+  const run = (id, patch = {}) => {
+    const l = L(id)
+    const cfg = setupOf(l)
+    return simulateFault(cfg, patch.fault ?? l.fault, patch.scenario ?? l.scenario ?? {}, l.faultSpec)
+  }
+  const q = (r, rid, sc = {}) => bayQuantities(atFault(r).meas[rid], relayInstruments(sc, rid))
+  const zOhm = Z => Math.hypot(Z.R, Z.X)
+  const tripOf = (r, rid) => r.events.find(e => e.kind === 'trip' && e.rid === rid)
+  const kA = c => Math.round(abs(c) / 10) / 100
+
+  it('f-cannot-see: 1.99 kA → 8.3 A, 19.9 kV → 16.6 V; VT fuse blown → no direction, never cleared; BA sees 24.9 kV, 2.49 kA', () => {
+    const base = q(run('f-cannot-see'), 'AB')
+    expect(kA(base.I[0].prim)).toBe(1.99)
+    expect(abs(base.I[0].sec)).toBeCloseTo(8.3, 1)
+    expect(abs(base.V[0].prim) / 1000).toBeCloseTo(19.9, 1)
+    expect(abs(base.V[0].sec)).toBeCloseTo(16.6, 1)
+    const blind = run('f-cannot-see', { scenario: { vtFuse: { AB: 'abc' } } })
+    expect(atFault(blind).meas.AB.dir).toBe(0)
+    expect(tripOf(blind, 'AB')).toBeUndefined()
+    expect(blind.outcome.verdict).toBe('uncleared')
+    const ba = q(run('f-cannot-see'), 'BA')
+    expect(abs(ba.V[0].prim) / 1000).toBeCloseTo(24.9, 1)
+    expect(kA(ba.I[0].prim)).toBe(2.49)
+  })
+
+  it('f-ct: 1.63 kA → 6.8 A; Z2 at 317 ms; 1500:5 → 2.03 kA, 15.2 Ω, Z1; 2000:5 at B–Y 10% → 12.7 Ω vs 21.2 Ω, miscoordination', () => {
+    const r = run('f-ct')
+    const b = q(r, 'AB')
+    expect(kA(b.I[0].prim)).toBe(1.63)
+    expect(abs(b.I[0].sec)).toBeCloseTo(6.8, 1)
+    expect(ms(tripOf(r, 'AB').t)).toBe(316.7)
+    const sc = { ratioError: { AB: { ct: 1.25 } } }
+    const r15 = run('f-ct', { scenario: sc })
+    const b15 = q(r15, 'AB', sc)
+    expect(kA(b15.I[0].relay)).toBe(2.03)
+    expect(zOhm(b15.Z.relay)).toBeCloseTo(15.2, 1)
+    expect(tripOf(r15, 'AB').zid).toBe(1)
+    const sc20 = { ratioError: { AB: { ct: 2000 / 1200 } } }
+    const r20 = run('f-ct', { scenario: sc20, fault: BY10 })
+    const b20 = q(r20, 'AB', sc20)
+    expect(zOhm(b20.Z.relay)).toBeCloseTo(12.7, 1)
+    expect(zOhm(b20.Z.prim)).toBeCloseTo(21.2, 1)
+    expect(r20.outcome.verdict).toBe('miscoordination')
+  })
+
+  it('f-polarity: XA clears at 317 ms; phase A only → 3I0 4.98 kA, AG loop, 0.86 Ω reverse; fault behind → Z1 miscoordination; correct → Z1 at 17 ms', () => {
+    const r = run('f-polarity')
+    expect(ms(tripOf(r, 'XA').t)).toBe(316.7)
+    expect(ms(r.outcome.clearedAt)).toBe(366.7)
+    const sc = { ctReversed: { AB: 'a' } }
+    const one = run('f-polarity', { scenario: sc })
+    const m = atFault(one).meas.AB
+    expect(kA(q(one, 'AB', sc).I0x3.relay)).toBe(4.98)
+    expect(m.loop).toBe('AG')
+    expect(zOhm(m.Z) * BAY_BASE.zOhm).toBeCloseTo(0.86, 2)
+    expect(m.dir).toBe(-1)
+    const behind = run('f-polarity', { fault: { kind: 'line', line: 'XA', frac: 0.9 } })
+    expect(tripOf(behind, 'AB').zid).toBe(1)
+    expect(behind.outcome.verdict).toBe('miscoordination')
+    const ok = run('f-polarity', { scenario: {} })
+    expect(ms(tripOf(ok, 'AB').t)).toBe(16.7)
+    expect(tripOf(ok, 'XA')).toBeUndefined()
+  })
+
+  it('f-samples: 1.99 kA / 19.9 kV; τ ≈ 10 ms; the DFT reaches the phasor after one cycle; Z1 at 16.7 ms', () => {
+    const l = L('f-samples')
+    const cfg = setupOf(l)
+    const r = run('f-samples')
+    const b = q(r, 'AB')
+    expect(kA(b.I[0].prim)).toBe(1.99)
+    expect(abs(b.V[0].prim) / 1000).toBeCloseTo(19.9, 1)
+    const tr = buildTrace(r, cfg, 'AB', {})
+    expect(tr.tau * 1000).toBeCloseTo(9.9, 1)
+    const act = phasorRms(tr, 'I', 'prim', 0, 0.001)
+    const c = 1 / 60
+    expect(dftAt(tr, 'I', 'relay', 0, c / 2) / act).toBeLessThan(0.8)
+    expect(Math.abs(dftAt(tr, 'I', 'relay', 0, c) / act - 1)).toBeLessThan(0.1)
+    expect(ms(r.events.find(e => e.kind === 'pickup' && e.rid === 'AB' && e.zid === 1).t)).toBe(16.7)
+  })
+
+  it('f-vt: 79.7 kV → 66.4 V prefault; 4.98 kV at 10%, 19.9/29.9 kV at 50/90%; 1000:1 at 95% → 15.8 Ω, Z1; phase-A fuse at 50% → 5.8 Ω', () => {
+    const r = run('f-vt')
+    const pre = bayQuantities(r.events[0].state.meas.AB, relayInstruments({}, 'AB'))
+    expect(abs(pre.V[0].prim) / 1000).toBeCloseTo(79.7, 1)
+    expect(abs(pre.V[0].sec)).toBeCloseTo(66.4, 1)
+    expect(abs(q(r, 'AB').V[0].prim) / 1000).toBeCloseTo(4.98, 2)
+    expect(abs(q(run('f-vt', { fault: AB(0.5) }), 'AB').V[0].prim) / 1000).toBeCloseTo(19.9, 1)
+    expect(abs(q(run('f-vt', { fault: AB(0.9) }), 'AB').V[0].prim) / 1000).toBeCloseTo(29.9, 1)
+    const sc = { ratioError: { AB: { vt: 1000 / 1200 } } }
+    const r95 = run('f-vt', { fault: AB(0.95), scenario: sc })
+    expect(zOhm(q(r95, 'AB', sc).Z.relay)).toBeCloseTo(15.8, 1)
+    expect(tripOf(r95, 'AB').zid).toBe(1)
+    const fa = { vtFuse: { AB: 'a' } }
+    expect(zOhm(q(run('f-vt', { fault: AB(0.5), scenario: fa }), 'AB', fa).Z.relay)).toBeCloseTo(5.8, 1)
+  })
+
+  it('f-z: 384 A load ≈ 204 Ω; 16.6 V ÷ 8.3 A = 2.0 Ω sec; 10%/90% → 2.0/18.0 Ω at 2.49/1.66 kA; B–Y 10% → 21.2 Ω, no AB trip', () => {
+    const r = run('f-z')
+    const pre = r.events[0].state.meas.AB
+    expect(abs(pre.I) * baseAmps()).toBeCloseTo(384, -1)
+    expect(zOhm(pre.Zload) * BAY_BASE.zOhm).toBeCloseTo(204, -1)
+    const b = q(r, 'AB')
+    expect(zOhm(b.Z.sec)).toBeCloseTo(2.0, 2)
+    const near = q(run('f-z', { fault: AB(0.1) }), 'AB'), far = q(run('f-z', { fault: AB(0.9) }), 'AB')
+    expect(zOhm(near.Z.relay)).toBeCloseTo(2.0, 2)
+    expect(zOhm(far.Z.relay)).toBeCloseTo(18.0, 2)
+    expect(kA(near.I[0].prim)).toBe(2.49)
+    expect(kA(far.I[0].prim)).toBe(1.66)
+    const ext = run('f-z', { fault: BY10 })
+    expect(zOhm(q(ext, 'AB').Z.relay)).toBeCloseTo(21.2, 1)
+    expect(tripOf(ext, 'AB')).toBeUndefined()
+  })
+
+  it('f-lop: 384 A, 78.5 kV, relay 0 V → Z 0 forward, LOP blocks (secure); LOP off → Z1 at 17 ms on load (misoperation); phase A → ≈118 Ω, LOP; real fault at 10% → backup at 367 ms', () => {
+    const r = run('f-lop')
+    const f = atFault(r).meas.AB
+    const b = q(r, 'AB', { vtFuse: { AB: 'abc' } })
+    expect(abs(b.I[0].prim)).toBeCloseTo(384, -1)
+    expect(abs(b.V[0].prim) / 1000).toBeCloseTo(78.5, 1)
+    expect(abs(b.V[0].sec)).toBe(0)
+    expect(f.dir).toBe(1)
+    expect(r.events.some(e => e.kind === 'lop' && e.rid === 'AB')).toBe(true)
+    expect(tripOf(r, 'AB')).toBeUndefined()
+    const off = run('f-lop', { scenario: { vtFuse: { AB: 'abc' }, lopOff: ['AB'] } })
+    expect(ms(tripOf(off, 'AB').t)).toBe(16.7)
+    expect(tripOf(off, 'AB').zid).toBe(1)
+    expect(off.outcome.verdict).toBe('misoperation')
+    const one = { vtFuse: { AB: 'a' } }
+    const ra = run('f-lop', { scenario: one })
+    expect(zOhm(q(ra, 'AB', one).Z.relay)).toBeCloseTo(118, -1)
+    expect(ra.events.some(e => e.kind === 'lop')).toBe(true)
+    expect(run('f-lop', { scenario: { ...one, lopOff: ['AB'] } }).outcome.verdict).toBe('secure')
+    const real = run('f-lop', { fault: AB(0.1) })
+    expect(tripOf(real, 'AB')).toBeUndefined()
+    expect(ms(tripOf(real, 'XA').t)).toBe(316.7)
+    expect(ms(real.outcome.clearedAt)).toBe(366.7)
+  })
+
+  it('no-fault runs: nothing changes without an instrument failure, and the t = 0 event leads', () => {
+    const r = run('f-lop', { scenario: {} })
+    expect(r.outcome.verdict).toBe('secure')
+    expect(r.events.filter(e => e.t >= 0).map(e => e.kind)).toEqual(['fault'])
+    const k = run('f-lop').events.map(e => e.kind)
+    expect(k.slice(0, 4)).toEqual(['prefault', 'fault', 'instrument', 'lop'])
+  })
+
+  it('f-trip: Z1 at 17 ms, breaker stuck, XA Z2 at 317 ms; trip circuit open instead → same clear; both restored → 52-AB opens at 67 ms', () => {
+    const r = run('f-trip')
+    expect(ms(tripOf(r, 'AB').t)).toBe(16.7)
+    expect(ms(tripOf(r, 'XA').t)).toBe(316.7)
+    expect(ms(r.outcome.clearedAt)).toBe(366.7)
+    const open = run('f-trip', { scenario: { tripOpen: ['AB'] } })
+    expect(ms(tripOf(open, 'AB').t)).toBe(16.7)
+    expect(ms(open.outcome.clearedAt)).toBe(366.7)
+    const ok = run('f-trip', { scenario: {} })
+    expect(ms(ok.events.find(e => e.kind === 'bkrOpen' && e.rid === 'AB').t)).toBe(66.7)
+  })
+})
+
+describe('oscillography (waveforms)', () => {
+  const cfg = () => { const c = defaultConfig(); c.features.foundations = true; c.features.adjacent = true; c.features.sir = true; c.features.load = true
+    for (const b of c.network.buses) if (b.id === 'X' || b.id === 'Y') b.sir = 0.5; return coordinationConfig(c) }
+  const AB = f => ({ kind: 'line', line: 'AB', frac: f })
+  const cyc = 1 / 60
+
+  it('current is continuous through inception (DC offset), and the offset decays with the line X/R', () => {
+    const c = cfg()
+    const sim = simulateFault(c, AB(0.5))
+    const tr = buildTrace(sim, c, 'AB', {})
+    for (const p of [0, 1, 2]) {
+      const before = valueAt(tr, 'I', 'prim', p, -1e-7), after = valueAt(tr, 'I', 'prim', p, 1e-7)
+      expect(Math.abs(after - before)).toBeLessThan(1)
+    }
+    expect(tr.tau * 1000).toBeCloseTo(9.9, 1) // X/R = tan 75° = 3.73 at 60 Hz
+    const off = tr.offset.prim[0]
+    expect(Math.abs(off)).toBeGreaterThan(100)
+  })
+
+  it('the one-cycle DFT takes a cycle to settle on the phasor', () => {
+    const c = cfg()
+    const sim = simulateFault(c, AB(0.5))
+    const tr = buildTrace(sim, c, 'AB', {})
+    const act = phasorRms(tr, 'I', 'prim', 0, 0.001)
+    expect(dftAt(tr, 'I', 'relay', 0, cyc / 4) / act).toBeLessThan(0.6)
+    expect(Math.abs(dftAt(tr, 'I', 'relay', 0, 4 * cyc) / act - 1)).toBeLessThan(0.05)
+    // Before the fault the DFT matches the load phasor
+    const pre = phasorRms(tr, 'I', 'prim', 0, -cyc)
+    expect(dftAt(tr, 'I', 'relay', 0, -0.5 * cyc) / pre).toBeCloseTo(1, 2)
+    expect(SAMPLES_PER_CYCLE).toBe(16)
+  })
+
+  it('a reversed CT flips the secondary waveform; the window ends 2 cycles after clearing; uncleared runs are cut off', () => {
+    const c = cfg()
+    const sc = { ctReversed: { AB: 'abc' } }
+    const sim = simulateFault(c, AB(0.1), sc)
+    const tr = buildTrace(sim, c, 'AB', sc)
+    const t = 2.3 * cyc
+    expect(valueAt(tr, 'I', 'sec', 0, t) / (valueAt(tr, 'I', 'prim', 0, t) / 240)).toBeCloseTo(-1, 6)
+    expect(tr.end).toBeCloseTo(sim.outcome.clearedAt + 2 * cyc, 9)
+    // 52-AB opens at 66.7 ms: each pole carries on to its own current zero, then stays at zero
+    const okSim = simulateFault(c, AB(0.1))
+    const ok = buildTrace(okSim, c, 'AB', {})
+    const tOpen = okSim.events.find(e => e.kind === 'bkrOpen' && e.rid === 'AB').t
+    const dt = 1e-5
+    for (const p of [0, 1, 2]) {
+      const tr = ok
+      let tz = null
+      for (let t = tOpen + dt; t < tOpen + cyc; t += dt) if (valueAt(tr, 'I', 'prim', p, t) === 0) { tz = t; break }
+      expect(tz).not.toBeNull()
+      expect(tz - tOpen).toBeLessThan(cyc / 2 + dt)
+      expect(Math.abs(valueAt(tr, 'I', 'prim', p, tz - 2 * dt))).toBeLessThan(0.05 * phasorRms(tr, 'I', 'prim', p, tOpen - dt) * Math.SQRT2)
+    }
+    const blind = simulateFault(c, AB(0.5), { vtFuse: { AB: 'abc' } })
+    const tb = buildTrace(blind, c, 'AB', { vtFuse: { AB: 'abc' } })
+    expect(tb.cutOff).toBe(true)
+    expect(Math.abs(valueAt(tb, 'V', 'sec', 0, 0.3 * cyc))).toBe(0)
+  })
+})
+
+describe('bus differential (87B)', () => {
+  const setupOf = l => { const cfg = defaultConfig(); l.setup?.(cfg); return coordinationConfig(cfg) }
+  const L = id => LESSONS.find(l => l.id === id)
+  const run = (id, patch = {}, cfgPatch) => {
+    const l = L(id)
+    const cfg = setupOf(l)
+    cfgPatch?.(cfg)
+    return simulateFault(cfg, patch.fault ?? l.fault, patch.scenario ?? l.scenario ?? {})
+  }
+  const el = (r, cfg, sc = {}) => busDiffElement(atFault(r).meas, busZone(buildNetwork(cfg.network), cfg), instrumentFaults(cfg, sc), cfg.busdiff)
+  const kA = x => Math.round(x * baseAmps() / 10) / 100
+  const tripOf = (r, rid) => r.events.find(e => e.kind === 'trip' && e.rid === rid)
+  const BUSB = { kind: 'bus', bus: 'B' }
+
+  it('needs the module and adjacent lines; off → bus faults clear by remote Z2 as before', () => {
+    const c = defaultConfig(); c.features.adjacent = true
+    expect(busZone(buildNetwork(c.network), c)).toBeNull()
+    c.features.busdiff = true
+    expect(busZone(buildNetwork(c.network), c).feeders.sort()).toEqual(['BA', 'BY'])
+    const ci = structuredClone(c); ci.features.infeed = true; ci.network.buses.find(b => b.id === 'B').infeed = true
+    const inf = withInfeed(ci)
+    expect(busZone(buildNetwork(inf.network), inf)).toBeNull() // bus B is a source: no breaker to isolate it
+    const single = coordinationConfig({ ...defaultConfig(), features: { ...defaultConfig().features, busdiff: true } })
+    expect(busZone(buildNetwork(single.network), single)).toBeNull()
+  })
+
+  it('bus-basics: 1.59 + 3.62 kA in, operate = restraint ≈ 5.2 kA; trips both at 17 ms, cleared 67 ms; B–Y 10% cancels (1.56 kA each); module off → 367 ms', () => {
+    const l = L('bus-basics'), cfg = setupOf(l)
+    const r = run('bus-basics')
+    const e = el(r, cfg)
+    const into = Object.fromEntries(e.feeders.map(f => [f.rid, kA(abs(f.I[0]))]))
+    expect(into).toEqual({ BA: 1.59, BY: 3.62 })
+    expect(kA(e.phases[0].Iop)).toBeCloseTo(5.2, 1)
+    expect(e.phases[0].Iop).toBeCloseTo(e.phases[0].Ires, 9)
+    expect(ms(tripOf(r, 'BA').t)).toBe(16.7)
+    expect(tripOf(r, 'BY').logic).toBe('87B')
+    expect(ms(r.outcome.clearedAt)).toBe(66.7)
+    const ext = run('bus-basics', { fault: BY10 })
+    const ee = el(ext, cfg)
+    expect(ee.feeders.map(f => kA(abs(f.I[0])))).toEqual([1.56, 1.56])
+    expect(ee.phases[0].Iop).toBeLessThan(1e-9)
+    expect(ext.events.some(x => x.logic === '87B')).toBe(false)
+    const off = run('bus-basics', {}, c => { c.features.busdiff = false })
+    expect(ms(off.outcome.clearedAt)).toBe(366.7)
+    expect(ms(tripOf(off, 'AB').t)).toBe(316.7)
+    expect(ms(tripOf(off, 'YB').t)).toBe(316.7)
+  })
+
+  it('bus-polarity: 769 A standing differential on load (under 797 A pickup); 3.11 kA at the external fault trips the bus (YB at 367 ms); correct → restrains; no fault + 0.15 pu → trips on load; bus fault → 2.19 kA vs ≈ 5.2 kA (42%), fails, 367 ms', () => {
+    const l = L('bus-polarity'), cfg = setupOf(l)
+    const r = run('bus-polarity')
+    const bt = busTrace(r, cfg, l.scenario)
+    const pre = bt.segs[0]
+    expect(Math.round(pre.Iop * baseAmps())).toBe(769)
+    expect(pre.Iop).toBeCloseTo(pre.Ires, 9)
+    expect(Math.round(cfg.busdiff.pickupPu * baseAmps())).toBe(797)
+    const e = el(r, cfg, l.scenario)
+    expect(kA(e.phases[0].Iop)).toBe(3.11)
+    expect(ms(tripOf(r, 'BA').t)).toBe(16.7)
+    expect(tripOf(r, 'BA').logic).toBe('87B')
+    expect(ms(tripOf(r, 'YB').t)).toBe(316.7)
+    const ok = run('bus-polarity', { scenario: {} })
+    expect(ok.events.some(x => x.logic === '87B')).toBe(false)
+    expect(busTrace(ok, cfg, {}).segs[0].Iop).toBeLessThan(1e-9)
+    const none = run('bus-polarity', { fault: { kind: 'none' } })
+    expect(none.outcome.verdict).toBe('secure')
+    const low = run('bus-polarity', { fault: { kind: 'none' } }, c => { c.busdiff.pickupPu = 0.15 })
+    expect(Math.round(0.15 * baseAmps())).toBe(598)
+    expect(ms(tripOf(low, 'BA').t)).toBe(16.7)
+    expect(low.outcome.verdict).toBe('misoperation')
+    const inside = run('bus-polarity', { fault: BUSB })
+    const ei = el(inside, cfg, l.scenario)
+    expect(kA(ei.phases[0].Iop)).toBe(2.19)
+    expect(kA(ei.phases[0].Ires)).toBeCloseTo(5.2, 1)
+    expect(Math.round(ei.phases[0].Iop / ei.phases[0].Ires * 100)).toBe(42)
+    expect(inside.events.some(x => x.logic === '87B')).toBe(false)
+    expect(ms(inside.outcome.clearedAt)).toBe(366.7)
+  })
+
+
+  it('a bus CT fault does not touch the line relay on the same breaker', () => {
+    const l = L('bus-polarity'), cfg = setupOf(l)
+    const a = atFault(run('bus-polarity')).meas.BA, b = atFault(run('bus-polarity', { scenario: {} })).meas.BA
+    expect(a.dir).toBe(b.dir)
+    expect(a.Z).toEqual(b.Z)
   })
 })

@@ -55,12 +55,14 @@ export function FaultSpecPicker({ config, spec, onChange }) {
 }
 
 // tap: activeTap() result when the line-tap feature is on (adds tap fault locations)
-export function FaultPicker({ net, faultLoc, onChange, tap = null }) {
-  const value = faultLoc.kind === 'bus' ? `bus:${faultLoc.bus}` : faultLoc.kind === 'tap' ? 'tap:T' : faultLoc.kind === 'tapLV' ? 'tapLV:T' : `line:${faultLoc.line}`
+// allowNone: offer "No fault" (Foundations module: an instrument failure on a healthy system)
+export function FaultPicker({ net, faultLoc, onChange, tap = null, allowNone = false }) {
+  const value = faultLoc.kind === 'none' ? 'none:' : faultLoc.kind === 'bus' ? `bus:${faultLoc.bus}` : faultLoc.kind === 'tap' ? 'tap:T' : faultLoc.kind === 'tapLV' ? 'tapLV:T' : `line:${faultLoc.line}`
 
   function handleSelect(v) {
     const [kind, id] = v.split(':')
-    if (kind === 'bus') onChange({ kind: 'bus', bus: id })
+    if (kind === 'none') onChange({ kind: 'none' })
+    else if (kind === 'bus') onChange({ kind: 'bus', bus: id })
     else if (kind === 'tap') onChange({ kind: 'tap', frac: 1 })
     else if (kind === 'tapLV') onChange({ kind: 'tapLV' })
     else onChange({ kind: 'line', line: id, frac: faultLoc.kind === 'line' ? faultLoc.frac : 0.5 })
@@ -77,6 +79,11 @@ export function FaultPicker({ net, faultLoc, onChange, tap = null }) {
         <optgroup label="Buses">
           {net.busOrder.map(id => <option key={id} value={`bus:${id}`}>Bus {id}</option>)}
         </optgroup>
+        {(allowNone || faultLoc.kind === 'none') && (
+          <optgroup label="Healthy system">
+            <option value="none:">No fault (instrument failure only)</option>
+          </optgroup>
+        )}
         {tap && (
           <optgroup label={`Tap T (line ${net.lines[tap.line].from}–${net.lines[tap.line].to})`}>
             <option value="tap:T">Tap section</option>

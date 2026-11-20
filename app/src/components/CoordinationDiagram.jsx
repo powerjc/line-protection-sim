@@ -4,6 +4,8 @@ import { zoneReachPu, activeZones, isReverse, zoneLabel } from '../lib/protectio
 import { relayColor } from '../lib/colors'
 import { useUnits } from '../lib/units'
 import { findConflicts } from '../lib/coordination'
+import { busZone } from '../lib/busdiff'
+import { CtSymbol } from './Symbols'
 
 // One SVG, two stacked views sharing one distance axis:
 //   top    — one-line: sources, buses, CTs + relays (21), breakers (52), fault
@@ -138,7 +140,7 @@ export default function CoordinationDiagram({ config, sim, state, scenario, faul
     onPickFault({ kind: 'line', line: line.id, frac })
   }
 
-  const fx = xs(pf)
+  const fx = pf == null ? 0 : xs(pf) // pf null: no power-system fault
   const faultLive = state.faultEnergized
 
   // Line tap (feature 'tap'): drawn below the line at T; tap faults sit on it
@@ -260,6 +262,23 @@ export default function CoordinationDiagram({ config, sim, state, scenario, faul
         )
       })}
 
+      {/* Bus differential zone (87B): bounded by its CTs on the line side of each breaker */}
+      {(() => {
+        const bz = busZone(net, config)
+        if (!bz) return null
+        const x = busX[bz.bus], w = BKR_OFF + 10
+        const op = state.bus87?.op
+        const tripped = bz.feeders.some(id => state.tripped?.[id]?.logic === '87B')
+        const c = op || tripped ? '#dc2626' : '#7c3aed'
+        return (
+          <g pointerEvents="none">
+            <rect x={x - w} y={OL_Y - 19} width={2 * w} height={32} rx={4} fill={op ? '#fee2e2' : 'none'} fillOpacity={0.5}
+              stroke={c} strokeWidth={1.5} strokeDasharray="5 3" />
+            <text x={x} y={OL_Y - 42} textAnchor="middle" fontSize={9} fontWeight="700" fill={c}>87B{tripped ? ' TRIP' : op ? ' OP' : ''}</text>
+          </g>
+        )
+      })()}
+
       {/* Buses (clickable) */}
       {net.busOrder.map(id => (
         <g key={`bus${id}`} className="cursor-crosshair" onClick={() => onPickFault({ kind: 'bus', bus: id })}>
@@ -294,7 +313,8 @@ export default function CoordinationDiagram({ config, sim, state, scenario, faul
         return (
           <g key={`r${r.id}`}>
             {/* CT, wired down to its relay */}
-            <circle cx={ctx} cy={OL_Y} r={4.5} fill="white" stroke="#374151" strokeWidth={1.5} />
+            {/* ANSI CT: half-loop below the conductor, polarity mark toward the bus (forward = into the line) */}
+            <CtSymbol x={ctx} y={OL_Y} orient="h" side={1} dot={-r.dir} r={4.5} strokeWidth={1.5} color="#374151" />
             <path d={`M ${ctx} ${OL_Y + 5} L ${ctx} ${OL_Y + 15} L ${boxX} ${OL_Y + 22}`} fill="none" stroke="#9ca3af" strokeDasharray="2 2" />
 
             {/* Breaker: red = closed, green = open (US convention) */}
@@ -365,10 +385,10 @@ export default function CoordinationDiagram({ config, sim, state, scenario, faul
       })}
 
       {/* Fault marker */}
-      <path pointerEvents="none"
+      {pf != null && <path pointerEvents="none"
         transform={`translate(${marker.x - fx} ${marker.y - OL_Y})`}
         d={`M ${fx + 3} ${OL_Y - 26} L ${fx - 6} ${OL_Y - 4} L ${fx + 1} ${OL_Y - 4} L ${fx - 4} ${OL_Y + 14} L ${fx + 8} ${OL_Y - 9} L ${fx + 1} ${OL_Y - 9} Z`}
-        fill={faultLive ? '#dc2626' : '#9ca3af'} stroke="white" strokeWidth={1} />
+        fill={faultLive ? '#dc2626' : '#9ca3af'} stroke="white" strokeWidth={1} />}
 
       {/* ───────────── Zone coverage ───────────── */}
 
@@ -491,10 +511,10 @@ export default function CoordinationDiagram({ config, sim, state, scenario, faul
       {/* Fault position through the coverage lanes */}
       {/* The coverage axis runs bus to bus, so the fault sits a little off the
           one-line marker: a faint connector ties the two together */}
-{tapMarks.length === 0 && (
+{tapMarks.length === 0 && pf != null && (
       <line x1={marker.x} y1={marker.y + 16} x2={covX(pf)} y2={COV_TOP} stroke="#dc2626" strokeWidth={1} strokeDasharray="2 3" opacity={0.35} pointerEvents="none" />
       )}
-      {tapMarks.length === 0 && (
+      {tapMarks.length === 0 && pf != null && (
         <line x1={covX(pf)} y1={COV_TOP} x2={covX(pf)} y2={bottom} stroke="#dc2626" strokeWidth={1.5} strokeDasharray="5 3" opacity={0.7} pointerEvents="none" />
       )}
     </svg>

@@ -90,7 +90,10 @@ export function activeZones(relay, config) {
 // meas: the relay's measurement from the phasor solver — { Z: {R, X} | null,
 // dir: +1 forward / -1 reverse / 0 no current }. The memory-polarized
 // directional element supervises every zone, which settles Z = 0: a bolted
-// fault on the relay's own bus (current flowing in from the line) is reverse.
+// fault on the relay's own bus (current flowing in from the line) is reverse,
+// and Z = 0 with a forward memory direction is inside every forward zone (a
+// memory-polarized mho includes the origin). That is also why a relay with no
+// loss-of-potential blocking trips when its VT fuse blows on a loaded line.
 // shape: 'mho' | 'quad' (relayShape).
 export function zoneAsserts(zone, meas, lineLength, lineAngleDeg, shape = 'mho') {
   if (!zone.enabled || zone.reach <= 0 || !meas?.Z) return false
@@ -104,7 +107,8 @@ export function zoneAsserts(zone, meas, lineLength, lineAngleDeg, shape = 'mho')
     if (meas.dir >= 0) return false
     return atOrigin || inside(-R, -X)
   }
-  if (meas.dir <= 0 || atOrigin) return false
+  if (meas.dir <= 0) return false
+  if (atOrigin) return true
   return inside(R, X)
 }
 

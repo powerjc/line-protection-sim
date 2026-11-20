@@ -61,6 +61,7 @@ export const AUDIENCES = [
 // Which level a lesson track belongs to (shown in the Lessons menu);
 // a module's track shows the module instead
 export const TRACK_LEVEL = {
+  'Foundations': 'Foundations module',
   'Why protection matters': 'Around protection',
   'Basics': 'basic',
   'Coordination': 'intermediate',
@@ -69,6 +70,7 @@ export const TRACK_LEVEL = {
   'Ground faults & Rf': 'advanced',
   'Tapped lines': 'advanced',
   'Current differential': '87L module',
+  'Bus differential': '87B module',
 }
 export const trackLabel = track => LEVELS.find(l => l.id === TRACK_LEVEL[track])?.label ?? TRACK_LEVEL[track]
 
