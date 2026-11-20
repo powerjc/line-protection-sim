@@ -35,8 +35,12 @@ export default function StationView({ config, coord, station: stationRaw, onStat
             <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Station">
               {stations.map(id => (
                 <button key={id} role="radio" aria-checked={id === bus} onClick={() => onStation(id)}
+                  title={id === BUS_DIFF_BUS ? `Station ${id}: bus differential (87B) is modelled here` : `Station ${id}`}
                   className={`px-2.5 py-0.5 rounded text-xs font-bold border ${id === bus ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-700 border-gray-300'}`}>
                   {id}
+                  {/* Where bus differential lives, so the picker says so */}
+                  {id === BUS_DIFF_BUS && <span className={`ml-1 text-[10px] font-semibold ${id === bus ? 'text-indigo-200' : z ? 'text-indigo-600' : 'text-gray-400'}`}
+                    aria-hidden>87B</span>}
                 </button>
               ))}
             </div>
@@ -75,7 +79,7 @@ export default function StationView({ config, coord, station: stationRaw, onStat
         </Target>
       </div>
 
-      {(zone || bus === BUS_DIFF_BUS) && <Target id="station.bus87" className="rounded-xl">
+      <Target id="station.bus87" className="rounded-xl">
       {zone ? <BusDiffCard config={config} state={state} scenario={coord.scenario} zone={zone} coord={coord} />
         : bus === BUS_DIFF_BUS && (
           <OffStrip title="Bus differential (87B)"
@@ -84,7 +88,13 @@ export default function StationView({ config, coord, station: stationRaw, onStat
               : `the 87B module${config.features?.adjacent ? '' : ' and Adjacent lines (bus B needs two feeders)'}`}
             onEnable={onEnableBus} enableLabel="Turn on bus differential" />
         )}
-      </Target>}
+      {!zone && bus !== BUS_DIFF_BUS && (
+        <OffStrip title="Bus differential (87B)"
+          what="A differential zone around a bus: every feeder’s current in, and what must come out."
+          note={`It is modelled at bus ${BUS_DIFF_BUS} only.`}
+          onEnable={() => onStation(BUS_DIFF_BUS)} enableLabel={`Go to station ${BUS_DIFF_BUS} ▶`} />
+      )}
+      </Target>
       <Target id="station.osc" className="rounded-xl"><Oscillography config={config} sim={sim} state={state} scenario={coord.scenario} rid={feeders[0]} station={bus} time={coord.time} onSetTime={coord.setTime} /></Target>
     </div>
   )

@@ -32,3 +32,18 @@ export function settleFeatures(cfg, turnedOn = null) {
   }
   return busDiffBlocker(cfg) ? { ...cfg, features: { ...cfg.features, busdiff: false } } : cfg
 }
+
+// What settling changed, in words (shown as a note, so nothing flips silently).
+// requested: the config as asked for; settled: settleFeatures(requested, …)
+export function settledNotes(requested, settled) {
+  const notes = []
+  const was = requested.features ?? {}, now = settled.features ?? {}
+  if (!was.adjacent && now.adjacent) notes.push('Adjacent lines turned on: bus differential (87B) needs two feeders at bus B.')
+  if (infeedAtB(requested) && !busB(settled)?.infeed) notes.push('Bus B’s infeed turned off: in this model that source has no breaker or CT, so 87B could neither measure nor isolate it.')
+  if (was.busdiff && !now.busdiff) {
+    notes.push(busDiffBlocker(requested) === 'infeedB'
+      ? 'Bus differential (87B) turned off: bus B’s infeed has no breaker or CT in this model, so 87B could neither measure nor isolate it.'
+      : 'Bus differential (87B) turned off: it needs Adjacent lines (bus B needs two feeders).')
+  }
+  return notes
+}

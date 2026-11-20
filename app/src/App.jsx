@@ -13,6 +13,7 @@ import FaultResults from './components/FaultResults'
 import DifferentialView from './components/DifferentialView'
 import SettingsPanel from './components/SettingsPanel'
 import StatusChips from './components/StatusChips'
+import { SettleNote } from './components/SettingsPanel'
 import { TourProvider, HelpMenu, Target } from './components/Tour'
 import CoordinationView from './components/CoordinationView'
 import BayView from './components/BayView'
@@ -68,6 +69,8 @@ export default function App() {
     updateTopLevel,
     resetConfig,
     loadConfig,
+    settleNote,
+    clearSettleNote,
   } = useSimulation(() => configForLevel(levelPref))
   const coordConfig = useMemo(() => coordinationConfig(config), [config])
   // A feature tab falls back to Coordination when its feature is switched off
@@ -154,11 +157,14 @@ export default function App() {
         <Target id="header.settings">
         <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} config={config} onLevel={changeLevel} onUpdateTap={updateTap} onUpdate={updateTopLevel} onUpdateTiming={updateTiming} onReset={resetConfig}
           onUpdateFeature={updateFeature} onUpdatePilot={updatePilot} onUpdateSir={updateSir} onUpdateBus={updateBus} onUpdateInfeed={updateInfeed}
+          settleNote={settleNote} onClearSettleNote={clearSettleNote}
           timeUnit={timeUnit} onTimeUnit={changeTimeUnit} />
         </Target>
         </div>
       </header>
       <Target id="header.chips"><StatusChips config={config} onOpenSettings={() => setSettingsOpen(true)} /></Target>
+      {/* A change elsewhere (e.g. a Turn on button) can switch a dependency too: say so here as well */}
+      {settleNote && !settingsOpen && <SettleNote text={settleNote} onClose={clearSettleNote} className="mx-4 mt-2" />}
 
 
       {!lesson && welcome && tab === 'coord' && (

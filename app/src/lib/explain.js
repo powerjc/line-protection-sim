@@ -25,7 +25,7 @@ export const EXPLAIN = {
   },
   'header.settings': {
     title: 'Settings',
-    text: () => 'Learner level (which features are on), timing, display units, and the modules. Switching something on that needs something else switches that on too, and says so.',
+    text: () => 'Learner level (which features are on), timing, display units, and the modules. Switching something on that needs something else switches that on too (and anything it can’t work with off), and a note says what changed.',
   },
 
   // ── Coordination ──
@@ -75,7 +75,7 @@ export const EXPLAIN = {
   // ── Station ──
   'station.picker': {
     title: 'Which station',
-    text: () => 'One substation at a time. The fault, failures and playback are the same run as the Coordination tab.',
+    text: () => 'One substation at a time. The fault, failures and playback are the same run as the Coordination tab. The 87B tag marks the bus that has bus differential (B).',
   },
   'station.fault': {
     title: 'Where the fault is',
@@ -92,8 +92,8 @@ export const EXPLAIN = {
   'station.bus87': {
     title: 'Bus differential',
     text: ctx => (f(ctx, 'busdiff')
-      ? 'What goes in must come out: every 87B CT’s current into the bus, their sum (operate) against the sum of their sizes (restraint). Set a CT’s polarity here to see what a wiring error does.'
-      : 'A differential zone around bus B. It needs the 87B module and Adjacent lines; the button turns them on.'),
+      ? 'What goes in must come out: every 87B CT’s current into the bus, their sum (operate) against the sum of their sizes (restraint). Set a CT’s polarity here to see what a wiring error does. Modelled at bus B only; the other stations point you there.'
+      : 'A differential zone around bus B. It needs the 87B module and Adjacent lines; on station B the button turns them on, and on the other stations it takes you there.'),
   },
   'station.osc': {
     title: 'The station’s event report',

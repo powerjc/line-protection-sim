@@ -3,7 +3,7 @@ import { defaultConfig } from '../lib/schema'
 import { FAULTS } from '../lib/faults'
 import { runSimulation } from '../lib/study'
 import { DEFAULT_SPEC } from './useCoordination'
-import { settleFeatures } from '../lib/features'
+import { settleFeatures, settledNotes } from '../lib/features'
 
 // baseConfig: () => config used at start and by Reset (defaults + the learner level)
 export function useSimulation(baseConfig = defaultConfig) {
@@ -13,6 +13,17 @@ export function useSimulation(baseConfig = defaultConfig) {
   const [studyChannel, setStudyChannel] = useState('ok')
   // Fault Study fault type + resistance, applied to the whole suite
   const [studySpec, setStudySpec] = useState(DEFAULT_SPEC)
+  // What the last change switched on or off by itself (lib/features.js), or null
+  const [settleNote, setSettleNote] = useState(null)
+
+  // Every change that can break a feature dependency goes through here, from the
+  // current config (these are user events), so the note matches what was applied
+  function settle(requested, turnedOn = null) {
+    const next = settleFeatures(requested, turnedOn)
+    const notes = settledNotes(requested, next)
+    setSettleNote(notes.length ? notes.join(' ') : null)
+    setConfig(next)
+  }
 
   const results = useMemo(
     () => runSimulation(FAULTS, config, { channels: { AB: studyChannel } }, studySpec),
@@ -53,7 +64,7 @@ export function useSimulation(baseConfig = defaultConfig) {
 
   // Every feature change settles dependencies (lib/features.js)
   function updateFeature(name, on) {
-    setConfig(prev => settleFeatures({ ...prev, features: { ...prev.features, [name]: on } }, on ? name : null))
+    settle({ ...config, features: { ...config.features, [name]: on } }, on ? name : null)
   }
 
   function updateLine(lineId, field, value) {
@@ -71,13 +82,13 @@ export function useSimulation(baseConfig = defaultConfig) {
   // Infeed at an intermediate bus; a stiff (SIR 0) infeed would hold the bus
   // at 1 pu and starve the upstream line, so switching one on starts at SIR 1
   function updateInfeed(busId, on) {
-    setConfig(prev => settleFeatures({
-      ...prev,
+    settle({
+      ...config,
       network: {
-        ...prev.network,
-        buses: prev.network.buses.map(b => (b.id === busId ? { ...b, infeed: on, sir: on && !(b.sir > 0) ? 1 : b.sir } : b)),
+        ...config.network,
+        buses: config.network.buses.map(b => (b.id === busId ? { ...b, infeed: on, sir: on && !(b.sir > 0) ? 1 : b.sir } : b)),
       },
-    }))
+    })
   }
 
   function updateDiff(field, value) {
@@ -111,6 +122,7 @@ export function useSimulation(baseConfig = defaultConfig) {
   }
 
   function resetConfig() {
+    setSettleNote(null)
     setConfig(baseConfig())
   }
 
@@ -124,11 +136,12 @@ export function useSimulation(baseConfig = defaultConfig) {
 
   // Switch a group of features at once (learner levels)
   function updateFeatures(features) {
-    setConfig(prev => settleFeatures({ ...prev, features: { ...prev.features, ...features } }, features.busdiff ? 'busdiff' : null))
+    settle({ ...config, features: { ...config.features, ...features } }, features.busdiff ? 'busdiff' : null)
   }
 
   // Replace the whole config (lessons)
   function loadConfig(cfg) {
+    setSettleNote(null)
     setConfig(cfg)
   }
 
@@ -160,5 +173,7 @@ export function useSimulation(baseConfig = defaultConfig) {
     updateTopLevel,
     resetConfig,
     loadConfig,
+    settleNote,
+    clearSettleNote: () => setSettleNote(null),
   }
 }

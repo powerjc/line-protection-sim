@@ -42,7 +42,17 @@ function SirSetting({ bus, value, note, onChange }) {
   )
 }
 
-export default function SettingsPanel({ open: openProp, onOpenChange, config, onLevel, onUpdateTap, onUpdate, onUpdateTiming, onUpdateFeature, onUpdatePilot, onUpdateSir, onUpdateInfeed, onUpdateBus, onReset, timeUnit, onTimeUnit }) {
+// What a change switched on or off by itself (feature dependencies, lib/features.js)
+export function SettleNote({ text, onClose, className = '' }) {
+  return (
+    <div role="status" className={`flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 ${className}`}>
+      <span className="flex-1">{text}</span>
+      <button onClick={onClose} className="text-amber-700 hover:text-amber-900 leading-none" title="Dismiss">×</button>
+    </div>
+  )
+}
+
+export default function SettingsPanel({ open: openProp, onOpenChange, config, onLevel, onUpdateTap, onUpdate, onUpdateTiming, onUpdateFeature, onUpdatePilot, onUpdateSir, onUpdateInfeed, onUpdateBus, onReset, timeUnit, onTimeUnit, settleNote = null, onClearSettleNote }) {
   const sirOf = id => config.network.buses.find(b => b.id === id)?.sir ?? 0
   const [openLocal, setOpenLocal] = useState(false)
   const open = openProp ?? openLocal
@@ -69,6 +79,7 @@ export default function SettingsPanel({ open: openProp, onOpenChange, config, on
             <span className="font-semibold text-gray-800">Settings</span>
             <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
           </div>
+          {settleNote && <SettleNote text={settleNote} onClose={onClearSettleNote} className="mb-3" />}
 
           <div className="mb-4">
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
@@ -247,12 +258,18 @@ export default function SettingsPanel({ open: openProp, onOpenChange, config, on
                 {['A', 'B'].map(id => {
                   const bus = config.network.buses.find(b => b.id === id)
                   return (
-                    <div key={id} className="flex items-center gap-2">
-                      <input type="checkbox" checked={!!bus?.infeed} onChange={e => onUpdateInfeed(id, e.target.checked)}
-                        aria-label={`Infeed source at bus ${id}`} />
-                      <div className={`flex-1 ${bus?.infeed ? '' : 'opacity-40 pointer-events-none'}`}>
-                        <SirSetting bus={id} value={sirOf(id)} onChange={v => onUpdateSir(id, v)} />
+                    <div key={id}>
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={!!bus?.infeed} onChange={e => onUpdateInfeed(id, e.target.checked)}
+                          aria-label={`Infeed source at bus ${id}`} />
+                        <div className={`flex-1 ${bus?.infeed ? '' : 'opacity-40 pointer-events-none'}`}>
+                          <SirSetting bus={id} value={sirOf(id)} onChange={v => onUpdateSir(id, v)} />
+                        </div>
                       </div>
+                      {/* 87B and an infeed at B exclude each other here: say so before the click */}
+                      {id === 'B' && config.features?.busdiff && !bus?.infeed && (
+                        <p className="pl-5 -mt-0.5 text-[11px] text-gray-400" title="This source has no breaker or CT in this model, so 87B could neither measure nor isolate it. Ticking it turns 87B off">off while 87B is on (no breaker or CT for it here)</p>
+                      )}
                     </div>
                   )
                 })}

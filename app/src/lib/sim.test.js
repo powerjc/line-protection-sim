@@ -1672,7 +1672,7 @@ describe('the channel in the trip path (V3 phase 2)', () => {
 })
 
 describe('feature dependencies (settleFeatures)', async () => {
-  const { settleFeatures, busDiffBlocker } = await import('./features')
+  const { settleFeatures, busDiffBlocker, settledNotes } = await import('./features')
   const on = (cfg, k) => settleFeatures({ ...cfg, features: { ...cfg.features, [k]: true } }, k)
   const off = (cfg, k) => settleFeatures({ ...cfg, features: { ...cfg.features, [k]: false } })
   const infeedB = (cfg, v) => settleFeatures({ ...cfg, network: { ...cfg.network, buses: cfg.network.buses.map(b => (b.id === 'B' ? { ...b, infeed: v } : b)) } })
@@ -1692,6 +1692,27 @@ describe('feature dependencies (settleFeatures)', async () => {
     expect(infeedB(on(c, 'infeed'), true).features.busdiff).toBe(false)
     expect(on(c, 'load').features.busdiff).toBe(true)
     expect(settleFeatures(defaultConfig())).toEqual(defaultConfig())
+  })
+
+  it('says what settling switched by itself, and nothing when it switched nothing', () => {
+    const withB = (cfg, v) => ({ ...cfg, network: { ...cfg.network, buses: cfg.network.buses.map(b => (b.id === 'B' ? { ...b, infeed: v } : b)) } })
+    // 87B on, from a config with bus B's infeed: Adjacent lines on, B's infeed off
+    const base = withB(on(defaultConfig(), 'infeed'), true)
+    const req = { ...base, features: { ...base.features, busdiff: true } }
+    const notes = settledNotes(req, settleFeatures(req, 'busdiff'))
+    expect(notes.length).toBe(2)
+    expect(notes[0]).toMatch(/Adjacent lines turned on/)
+    expect(notes[1]).toMatch(/Bus B’s infeed turned off/)
+    // Ticking B's infeed with 87B on turns 87B off, and says why
+    const c = on(defaultConfig(), 'busdiff')
+    const req2 = withB(on(c, 'infeed'), true)
+    expect(settledNotes(req2, settleFeatures(req2))).toEqual([expect.stringMatching(/87B\) turned off: bus B’s infeed/)])
+    // Adjacent off: 87B off, for that reason
+    const req3 = { ...c, features: { ...c.features, adjacent: false } }
+    expect(settledNotes(req3, settleFeatures(req3))).toEqual([expect.stringMatching(/needs Adjacent lines/)])
+    // Unrelated change: no note
+    const req4 = { ...c, features: { ...c.features, load: true } }
+    expect(settledNotes(req4, settleFeatures(req4))).toEqual([])
   })
 })
 
