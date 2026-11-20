@@ -10,13 +10,12 @@ import { FaultPicker, FaultSpecPicker, ScenarioPanel } from './ScenarioPanel'
 import RelayPanel, { k0Props, shapeProps } from './RelayPanel'
 import PhasorPanel from './PhasorPanel'
 import ConsequencesCard from './ConsequencesCard'
-import ChainView from './ChainView'
 import QuickZones from './QuickZones'
 import { SchemeSelect } from './ScenarioPanel'
 import { activeZones } from '../lib/protection'
 
 // config: the Coordination system (coordinationConfig) — base line only unless adjacent lines are unlocked
-export default function CoordinationView({ config, coord, failuresHint = null, onUpdateZone, onUpdateLineLength, onUpdateLine, onUpdateRelay, onUpdateScheme }) {
+export default function CoordinationView({ config, coord, consOpen = false, onConsOpen = () => {}, failuresHint = null, onUpdateZone, onUpdateLineLength, onUpdateLine, onUpdateRelay, onUpdateScheme }) {
   const { sim, state } = coord
   const [showSettings, setShowSettings] = useState(false)
   const relayIds = Object.keys(config.relays)
@@ -32,7 +31,7 @@ export default function CoordinationView({ config, coord, failuresHint = null, o
       <div className="flex flex-col lg:flex-row gap-4 min-h-0">
         {/* Left: fault + scenario */}
         <aside className="lg:w-64 flex flex-col gap-6 bg-white rounded-xl border border-gray-200 p-4 shrink-0">
-          <FaultPicker net={sim.net} faultLoc={coord.faultLoc} onChange={coord.setFaultLoc} tap={activeTap(sim.net, config)} allowNone={!!config.features?.foundations} />
+          <FaultPicker net={sim.net} faultLoc={coord.faultLoc} onChange={coord.setFaultLoc} tap={activeTap(sim.net, config)} allowNone />
           <FaultSpecPicker config={config} spec={coord.spec} onChange={coord.setSpec} />
           <hr className="border-gray-100" />
           <ScenarioPanel relayIds={relayIds} scenario={coord.scenario}
@@ -40,7 +39,7 @@ export default function CoordinationView({ config, coord, failuresHint = null, o
             pilotLines={pilotLines} onSetChannel={coord.setChannel}
             diffLine={!!config.features?.diff} onSetDiffChannel={coord.setDiffChannel}
             lessonHint={failuresHint}
-            dcBuses={config.features?.consequences ? [...new Set(relayIds.map(id => config.relays[id].bus))] : []} onToggleDc={coord.toggleDc} />
+            dcBuses={[...new Set(relayIds.map(id => config.relays[id].bus))]} onToggleDc={coord.toggleDc} />
           <hr className="border-gray-100" />
           <QuickZones config={config} onUpdateZone={onUpdateZone} />
         </aside>
@@ -72,15 +71,14 @@ export default function CoordinationView({ config, coord, failuresHint = null, o
             <p className="text-xs text-gray-400">Step through, or click an event to jump to it</p>
           </div>
           <OutcomeCard outcome={sim.outcome} revealed={revealed} />
-          {config.features?.consequences && coord.faultLoc.kind !== 'none' && <ConsequencesCard config={config} sim={sim} loc={coord.faultLoc} time={coord.time} />}
+          {coord.faultLoc.kind !== 'none' && <ConsequencesCard config={config} sim={sim} loc={coord.faultLoc} time={coord.time} open={consOpen} onToggle={() => onConsOpen(!consOpen)} />}
           <div data-scroll-box className="relative overflow-y-auto max-h-[28rem]">
             <EventLog events={sim.events} eventIdx={coord.eventIdx} onSelect={coord.setTime} />
           </div>
         </section>
       </div>
 
-      {/* With the Foundations module the chain lives on the Bay tab */}
-      {config.features?.consequences && !config.features?.foundations && <ChainView config={config} sim={sim} state={state} coord={coord} />}
+      {/* The protection chain lives on the Bay tab */}
 
       {config.features?.sir && <PhasorPanel config={config} sim={sim} state={state} />}
 

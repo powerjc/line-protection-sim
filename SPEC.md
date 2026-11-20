@@ -10,6 +10,7 @@ The sections after § Status are the design record, written as each version was 
 ## Status & backlog (as of 2026-10-29)
 
 **Built**
+- **Always on (2026-11-19, schema v15):** the 'foundations' and 'consequences' module flags are retired. The Bay tab (with the protection chain, CT/VT failures, LOP, No-fault runs) is always available; Coordination shows consequences as a one-line summary under the outcome with a details expander (per-browser preference; opens by default for the “around protection” audience and in the Why-protection-matters lessons, `showConsequences`). The CCT setting moved to ⚙ Timing. 87L and 87B stay modules: they add protection that trips, and lessons compare with and without them.
 - **Bus differential module** (V6 step 1, built 2026-11-19): 87B on bus B with line-side CTs (overlapping the line zones), bus-CT polarity faults, 2 lessons
 - **Foundations module** (V5, built 2026-11-19, phases 1–4): instrument layer in the engine (CT polarity, ratio-setting error, VT fuse); Bay tab with the bay one-line, *What the relay sees* table, oscillography (synthesized event report: primary, secondary, samples, one-cycle DFT, digital) and the protection chain (moved from Coordination when the module is on); *Foundations* track (8 lessons), loss of potential (no-fault runs, LOP blocking), offered from the welcome card
 - **Coordination tab** (default): one-line with breakers, CTs and fault-current paths; zone coverage lanes with static setting checks; logic-analyzer timing chart; sequence of events; outcome verdict; 3-cycle prefault period; failure scenarios (relay out of service, stuck breaker, channel failures); sidebar with labelled fault presets and Z1/Z2 reach controls
@@ -21,7 +22,7 @@ The sections after § Status are the design record, written as each version was 
 - **Lessons:** 41 in ten tracks; every Coordination and Bay lesson's outcome (and a Bay lesson's measured Z and direction) and every "Try this" claim is checked by the test suite
 - **Consequences module** (V3 § A, built 2026-11-11): ⚙ Modules → Consequences; a card beside the outcome fills in during playback: fault time vs critical clearing time (12 cyc, illustrative), relative fault duty and arc energy, outage extent
 - **Line tap** (V4 step 1, built 2026-11-11): unprotected load tap on A–B (Advanced level); tap-section and tap LV-bus faults, tap transformer protection, true vs measured distance on the coverage lanes; *Tapped lines* track
-- **Quality:** config schema v14 with migrations from v1; 167 Vitest tests
+- **Quality:** config schema v15 with migrations from v1; 168 Vitest tests
 - **Deploy:** Docker image (unprivileged nginx) behind the host's nginx, verified locally (§ Deployment)
 
 **Next: V5, Foundations: the relay's view** (design draft 2026-11-19, § Roadmap → V5): an instrument layer between the solver and the relays; a Bay tab (bay one-line with the chain view moved in, plus oscillography: primary, secondary, sampled, measured); lessons 0.1–0.8. Saturation comes later.

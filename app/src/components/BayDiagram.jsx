@@ -71,7 +71,7 @@ export default function BayDiagram({ config, sim, state, scenario, faultLoc, rid
   const farBus = g.farBus
   const remote = Object.keys(config.relays).find(id => id !== rid && config.relays[id].line === r.line)
   const m = state.meas?.[rid]
-  const ri = relayInstruments(config.features?.foundations ? scenario : {}, rid)
+  const ri = relayInstruments(scenario, rid)
   const fuse = scenario.vtFuse?.[rid]
   const ctRev = scenario.ctReversed?.[rid]
   const ratioBad = ri.ct !== 1 || ri.vt !== 1

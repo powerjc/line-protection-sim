@@ -23,7 +23,7 @@ export const MAX_CYCLES = 30         // cut-off for runs that never clear
 // Views: 'prim' (on the line, A / V), 'sec' (relay terminals, A / V), 'relay' (computed primary, A / V)
 // Quantities: 'I' | 'V'; phase 0..2
 export function buildTrace(sim, config, rid, scenario) {
-  const ri = relayInstruments(config.features?.foundations ? scenario : {}, rid)
+  const ri = relayInstruments(scenario, rid)
   const f = config.timing.freqHz
   const w = 2 * Math.PI * f
   const tau = Math.tan((config.lineAngleDeg * Math.PI) / 180) / w

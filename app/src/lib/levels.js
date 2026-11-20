@@ -37,7 +37,7 @@ export const LEVELS = [
   },
 ]
 
-// Who the welcome card asks about. 'around' starts with the consequences
+// Who the welcome card asks about. 'around' starts with the consequences details open
 // module on and the Why protection matters track; the level stays Basic.
 export const AUDIENCES = [
   {
@@ -46,7 +46,6 @@ export const AUDIENCES = [
     who: 'New protection engineers and students',
     blurb: 'Start with distance zones, then coordination and pilot schemes. Raise the learner level in ⚙ Settings as you go.',
     firstLesson: 'z1-basics',
-    features: { consequences: false },
   },
   {
     id: 'around',
@@ -54,7 +53,6 @@ export const AUDIENCES = [
     who: 'Networks, SCADA, commissioning, planning',
     blurb: 'Start with why protection matters: what a slow clear costs, and the links it depends on, including the communications channel.',
     firstLesson: 'why-cost',
-    features: { consequences: true },
   },
 ]
 
@@ -92,9 +90,8 @@ export function withLevel(config, id) {
   return { ...config, features: { ...config.features, ...levelFeatures(id) } }
 }
 
-export function configForLevel(id, audience = 'learning') {
-  const cfg = withLevel(defaultConfig(), id)
-  return { ...cfg, features: { ...cfg.features, ...AUDIENCES.find(a => a.id === audience)?.features } }
+export function configForLevel(id) {
+  return withLevel(defaultConfig(), id)
 }
 
 // Per-browser preferences — conveniences, safe to lose
@@ -119,6 +116,14 @@ export function loadAudiencePref() {
 }
 export function saveAudiencePref(id) {
   try { localStorage.setItem(AUDIENCE_KEY, id) } catch { /* storage unavailable */ }
+}
+// Consequences details open on the Coordination tab (null = not chosen yet: follow the audience)
+const CONSEQUENCES_KEY = 'lps.consequencesOpen'
+export function loadConsequencesPref() {
+  try { const v = localStorage.getItem(CONSEQUENCES_KEY); return v === null ? null : v === '1' } catch { return null }
+}
+export function saveConsequencesPref(open) {
+  try { localStorage.setItem(CONSEQUENCES_KEY, open ? '1' : '0') } catch { /* storage unavailable */ }
 }
 export function loadWelcomed() {
   try { return localStorage.getItem(WELCOME_KEY) === '1' } catch { return false }

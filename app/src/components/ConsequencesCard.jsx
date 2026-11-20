@@ -25,7 +25,8 @@ function Meter({ value, max, mark, markLabel }) {
 
 // What the clearing time cost — fills in as the run plays.
 // config/sim/loc: the Coordination run; time: playback time
-export default function ConsequencesCard({ config, sim, loc, time }) {
+// Collapsed: one line (fault time vs CCT, outage); open: the meters and notes.
+export default function ConsequencesCard({ config, sim, loc, time, open = true, onToggle }) {
   const f = config.timing.freqHz
   const c = costsAt(sim, config, time)
   const final = costsAt(sim, config)
@@ -38,11 +39,32 @@ export default function ConsequencesCard({ config, sim, loc, time }) {
   const tMax = Math.max(final.elapsed, final.cct) * 1.15 || final.cct * 1.15
   const rMax = Math.max(final.duty ?? 1, final.arc ?? 1, 2) * 1.1
 
+  const extra = out ? [...out.extraLines.map(l => `line ${lineName(l)}`), ...out.extraBuses.map(b => `bus ${b}`)] : []
+  const summary = stillOn ? <span className="text-red-700 font-semibold">not cleared</span>
+    : <>
+        <span className={c.done ? (c.beyondCct ? 'text-red-700 font-semibold' : 'text-emerald-700 font-semibold') : ''}>{ms(c.elapsed)}</span>
+        <span className="text-gray-400"> {c.done ? (c.beyondCct ? 'beyond' : 'inside') : 'vs'} the {config.consequences?.cctCycles ?? 12}-cycle CCT</span>
+        {out && <span className="text-gray-500"> · {extra.length ? <span className="text-red-700">also lost {extra.join(', ')}</span> : 'only the faulted element out'}</span>}
+      </>
+
+  if (!open) {
+    return (
+      <button type="button" onClick={onToggle} aria-expanded={false} aria-label="Consequences (show details)"
+        className="w-full text-left px-4 py-2 border-b border-gray-100 text-xs flex items-baseline justify-between gap-2 hover:bg-gray-50">
+        <span><span className="font-semibold text-gray-500 uppercase tracking-wider mr-1">Consequences</span> {summary}</span>
+        <span className="text-indigo-600 shrink-0">details ▾</span>
+      </button>
+    )
+  }
+
   return (
     <div className="px-4 py-3 border-b border-gray-100" aria-label="Consequences">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Consequences</h3>
-        <span className="text-[10px] text-gray-400">relative · illustrative values</span>
+        <span className="flex items-baseline gap-2">
+          <span className="text-[10px] text-gray-400">relative · illustrative values</span>
+          {onToggle && <button type="button" onClick={onToggle} aria-expanded={true} className="text-xs text-indigo-600 hover:text-indigo-800">hide ▴</button>}
+        </span>
       </div>
 
       <div className="mt-2 text-xs text-gray-700 flex justify-between">

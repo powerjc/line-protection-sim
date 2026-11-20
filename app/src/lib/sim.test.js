@@ -191,7 +191,7 @@ describe('schema migration', () => {
     }
     const m = migrateConfig(v1)
     expect(m.lineAngleDeg).toBe(70)
-    expect(m.version).toBe(14)
+    expect(m.version).toBe(15)
     expect(m.relays.AB.zones[1]).toEqual({ direction: 'forward', id: 2, reach: 130, rReach: 150, delayCycles: 21, enabled: true })
     expect(m.relays.AB.zones[2].direction).toBe('reverse')
   })
@@ -203,7 +203,7 @@ describe('schema migration', () => {
     delete v2.features; delete v2.pilot; delete v2.schemes
     for (const r of Object.values(v2.relays)) r.zones = r.zones.filter(z => z.direction !== 'reverse').map(({ delayCycles, direction, ...z }) => ({ ...z, delay: delayCycles / 60 }))
     const m = migrateConfig(v2)
-    expect(m.version).toBe(14)
+    expect(m.version).toBe(15)
     expect(m.schemes).toEqual({ XA: 'step', AB: 'step', BY: 'step' })
     expect(m.timing.ctiCycles).toBe(10)
     expect(m.relays.AB.zones[1].delayCycles).toBe(15)
@@ -237,9 +237,9 @@ describe('schema migration', () => {
     delete v10.features.consequences
     v10.features.diff = true
     const m = migrateConfig(v10)
-    expect(m.version).toBe(14)
+    expect(m.version).toBe(15)
     expect(m.consequences).toEqual({ cctCycles: 12 })
-    expect(m.features.consequences).toBe(false)
+    expect(m.features.consequences).toBeUndefined() // retired in v15: always available
     expect(m.features.diff).toBe(true)
   })
 
@@ -249,20 +249,20 @@ describe('schema migration', () => {
     delete v11.features.tap
     v11.network.lines = v11.network.lines.map(({ tap, ...l }) => l)
     const m = migrateConfig(v11)
-    expect(m.version).toBe(14)
+    expect(m.version).toBe(15)
     expect(m.features.tap).toBe(false)
     expect(m.network.lines.find(l => l.id === 'AB').tap).toEqual({ at: 0.4, lead: 0.2, zt: 2.0, load: 0.1, clearCycles: 6 })
     expect(m.network.lines.filter(l => l.tap)).toHaveLength(1)
     expect(m).toEqual(defaultConfig())
   })
 
-  it('upgrades v12 to v13: Foundations module, off', () => {
+  it('upgrades v12 through v13 (Foundations flag, since retired)', () => {
     const v12 = defaultConfig()
     v12.version = 12
     delete v12.features.foundations
     const m = migrateConfig(v12)
-    expect(m.version).toBe(14)
-    expect(m.features.foundations).toBe(false)
+    expect(m.version).toBe(15)
+    expect(m.features.foundations).toBeUndefined()
     expect(m).toEqual(defaultConfig())
   })
 
@@ -272,13 +272,24 @@ describe('schema migration', () => {
     delete v13.features.busdiff
     delete v13.busdiff
     const m = migrateConfig(v13)
-    expect(m.version).toBe(14)
+    expect(m.version).toBe(15)
     expect(m.features.busdiff).toBe(false)
     expect(m.busdiff).toEqual({ pickupPu: 0.2, slopePct: 50 })
     expect(m).toEqual(defaultConfig())
   })
 
-  it('passes v14 through and rejects unknown versions', () => {
+  it('upgrades v14 to v15: the consequences and foundations flags are retired (always available)', () => {
+    const v14 = defaultConfig()
+    v14.version = 14
+    v14.features = { ...v14.features, consequences: true, foundations: true }
+    const m = migrateConfig(v14)
+    expect(m.version).toBe(15)
+    expect('consequences' in m.features || 'foundations' in m.features).toBe(false)
+    expect(m.consequences).toEqual({ cctCycles: 12 })
+    expect(m).toEqual(defaultConfig())
+  })
+
+  it('passes v15 through and rejects unknown versions', () => {
     const cfg = defaultConfig()
     expect(migrateConfig(cfg)).toBe(cfg)
     expect(() => migrateConfig({ version: 99 })).toThrow()
@@ -1042,7 +1053,7 @@ describe('learner levels', () => {
       prev = l.features
     }
     // Advanced = every distance feature; 87L is a separate module no level touches
-    expect(new Set(LEVELS.at(-1).features)).toEqual(new Set(known.filter(f => !['diff', 'consequences', 'foundations', 'busdiff'].includes(f))))
+    expect(new Set(LEVELS.at(-1).features)).toEqual(new Set(known.filter(f => !['diff', 'busdiff'].includes(f))))
     expect(LEVEL_FEATURES).not.toContain('diff')
   })
 
@@ -1061,11 +1072,10 @@ describe('learner levels', () => {
     for (const l of [...LEVELS, ...AUDIENCES]) expect(LESSONS.some(x => x.id === l.firstLesson)).toBe(true)
   })
 
-  it('the “around protection” audience starts at Basic with the consequences module on', () => {
-    const cfg = configForLevel('basic', 'around')
-    expect(cfg.features.consequences).toBe(true)
-    expect(levelOf(cfg.features)).toBe('basic')
-    expect(configForLevel('basic', 'learning')).toEqual(defaultConfig())
+  it('audiences only pick the starting lesson: no features, and Basic is the defaults', () => {
+    for (const a of AUDIENCES) expect(a.features).toBeUndefined()
+    expect(configForLevel('basic')).toEqual(defaultConfig())
+    expect(levelOf(configForLevel('basic').features)).toBe('basic')
   })
 
   it('station DC lost = every relay at that bus out of service and its breakers unable to trip', () => {
@@ -1183,18 +1193,19 @@ describe('consequences', () => {
 
 describe('instrument layer (Foundations)', () => {
   const AB = (frac) => ({ kind: 'line', line: 'AB', frac })
-  const withF = (tweak = c => c) => { const c = defaultConfig(); c.features.foundations = true; return tweak(c) }
+  const withF = (tweak = c => c) => { const c = defaultConfig(); return tweak(c) }
   const strip = run => run.events.map(e => [e.kind, ms(e.t), e.text])
   const tripOf = (run, rid) => run.events.find(e => e.kind === 'trip' && e.rid === rid)
 
-  it('ideal instruments change nothing, and instrument faults need the module', () => {
+  it('ideal instruments change nothing; instrument faults apply without any module', () => {
     const cases = [[AB(0.5), {}], [BY10, {}], [AB(0.95), { breakerFail: ['AB'] }]]
     for (const [loc, sc] of cases) {
       expect(strip(simulateFault(withF(), loc, sc))).toEqual(strip(simulateFault(defaultConfig(), loc, sc)))
     }
     const rev = { ctReversed: { BA: 'abc' }, vtFuse: { AB: 'abc' } }
-    expect(instrumentFaults(defaultConfig(), rev)).toEqual({})
-    expect(strip(simulateFault(defaultConfig(), AB(0.5), rev))).toEqual(strip(simulateFault(defaultConfig(), AB(0.5))))
+    expect(instrumentFaults(defaultConfig(), rev)).toEqual(rev)
+    expect(instrumentFaults(defaultConfig(), { relayOos: ['AB'], vtFuse: {} })).toEqual({})
+    expect(strip(simulateFault(defaultConfig(), AB(0.5), rev))).not.toEqual(strip(simulateFault(defaultConfig(), AB(0.5))))
   })
 
   it('keeps the primary truth beside what the relay sees', () => {
@@ -1437,7 +1448,7 @@ describe('Foundations lessons: try-this claims', () => {
 })
 
 describe('oscillography (waveforms)', () => {
-  const cfg = () => { const c = defaultConfig(); c.features.foundations = true; c.features.adjacent = true; c.features.sir = true; c.features.load = true
+  const cfg = () => { const c = defaultConfig(); c.features.adjacent = true; c.features.sir = true; c.features.load = true
     for (const b of c.network.buses) if (b.id === 'X' || b.id === 'Y') b.sir = 0.5; return coordinationConfig(c) }
   const AB = f => ({ kind: 'line', line: 'AB', frac: f })
   const cyc = 1 / 60

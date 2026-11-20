@@ -5,7 +5,8 @@
 //   study: `faultId` (+ optional `studyChannel` for the A–B pilot channel)
 //   coord: `fault` location + optional `scenario` (failures, channels)
 //   diff:  Differential tab (uses `faultSpec`)
-//   bay:   Bay tab (Foundations module): like coord (`fault`, `scenario`), plus
+// Coordination lessons may set `showConsequences` to open the consequences details.
+//   bay:   Bay tab: like coord (`fault`, `scenario`), plus
 //          `bayRelay` (the terminal shown, default AB). Bay lessons also state
 //          `expect.measured`: { rid, zOhm, dir } — what the relay measures at the
 //          fault (primary ohms, +1 forward / -1 reverse / 0 none)
@@ -29,8 +30,8 @@ export const TRACKS = ['Foundations', 'Why protection matters', 'Basics', 'Coord
 const tap = (cfg, t) => { cfg.features.tap = true; Object.assign(cfg.network.lines.find(l => l.id === 'AB').tap, t) }
 
 // Why protection matters: adjacent lines (so remote backup and outages
-// exist), a pilot scheme on A–B, and the consequences card on
-const why = (cfg, scheme) => { adjacent(cfg); pilot(cfg, scheme); cfg.features.consequences = true }
+// exist) and a pilot scheme on A–B. These lessons open the consequences details (`showConsequences`).
+const why = (cfg, scheme) => { adjacent(cfg); pilot(cfg, scheme) }
 
 // Bus differential: the Foundations setup plus the 87B module on bus B
 const busdiff = cfg => { foundations(cfg); cfg.features.busdiff = true }
@@ -39,7 +40,6 @@ const busdiff = cfg => { foundations(cfg); cfg.features.busdiff = true }
 // source impedance behind X and Y (so bus voltage sags as it does in a real
 // fault). Display values: typical 138 kV, 20 Ω line, CT 1200:5, VT 1200:1.
 const foundations = cfg => {
-  cfg.features.foundations = true
   adjacent(cfg)
   sources(cfg, { X: 0.5, Y: 0.5 })
 }
@@ -216,12 +216,13 @@ export const LESSONS = [
   {
     id: 'why-cost',
     track: 'Why protection matters',
+    showConsequences: true,
     title: 'What a fault costs',
     tab: 'coord',
     setup: cfg => why(cfg, 'DCB'),
     fault: { kind: 'line', line: 'AB', frac: 0.1 },
     expect: { verdict: 'selective' },
-    intro: 'A fault is a short circuit: very high current, an arc, and nearby generators pushed off balance until protection removes it. Line A–B has a fault 10% from A. Everything is working, and the Consequences card (right, under the outcome) adds up what the fault costs as it plays.',
+    intro: 'A fault is a short circuit: very high current, an arc, and nearby generators pushed off balance until protection removes it. Line A–B has a fault 10% from A. Everything is working, and Consequences (right, under the outcome) adds up what the fault costs as it plays.',
     watch: [
       '21-AB trips on Zone 1 at 17 ms. 21-BA trips by its pilot scheme (DCB) at 50 ms, because no “block” came from A.',
       'The fault is cleared at 100 ms (6 cycles): inside the critical clearing time, fault duty and arc energy close to a fast clear, and only line A–B is out.',
@@ -234,6 +235,7 @@ export const LESSONS = [
   {
     id: 'why-dc',
     track: 'Why protection matters',
+    showConsequences: true,
     title: 'The chain: one dead battery',
     tab: 'coord',
     setup: cfg => why(cfg, 'DCB'),
@@ -249,13 +251,14 @@ export const LESSONS = [
     tryIt: [
       'Under Failures → Station DC supply, tick A back on and replay: back to a 100 ms clear.',
       'With A’s DC off again, drag the fault to 50%. 21-XA’s Zone 2 doesn’t reach that far and nothing else sees the fault: in this model it is never cleared. Real systems add longer-reaching backup, but the point stands: every link has to work.',
-      'Back at 10% with DC restored, break a different link in the Protection chain below (terminal AB): open the trip circuit. 21-AB still trips at 17 ms, but the trip never reaches 52-AB, and the result is the same 367 ms remote-backup clear.',
+      'Back at 10% with DC restored, break a different link in the protection chain on the Bay tab (terminal AB): untick Trip circuit Intact. 21-AB still trips at 17 ms, but the trip never reaches 52-AB, and the result is the same 367 ms remote-backup clear.',
     ],
     takeaway: 'Protection is a chain. Standards call it a Protection System (NERC Glossary): relays, communications, voltage and current sensing, station DC supply, and control circuitry through the trip coils. Everything protecting one line together is its Composite Protection System; remote backup from another line’s protection, like 21-XA here, is not part of it. A failure nobody sees is found by the next fault, which is why batteries are alarmed and trip circuits supervised.',
   },
   {
     id: 'why-channel',
     track: 'Why protection matters',
+    showConsequences: true,
     title: 'Your channel is in the trip path',
     tab: 'coord',
     setup: cfg => why(cfg, 'POTT'),

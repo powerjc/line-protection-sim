@@ -32,7 +32,7 @@ function Row({ label, prim, sec, relay, neq, note }) {
 export default function RelayView({ config, state, scenario, rid }) {
   const m = state.meas?.[rid]
   if (!m?.prim) return null
-  const ri = relayInstruments(config.features?.foundations ? scenario : {}, rid)
+  const ri = relayInstruments(scenario, rid)
   const q = bayQuantities(m, ri)
   const live = q.I.some(r => abs(r.prim) > 1)
   const zNeq = !!q.Z.prim !== !!q.Z.relay || (q.Z.prim && q.Z.relay && Math.hypot(q.Z.prim.R - q.Z.relay.R, q.Z.prim.X - q.Z.relay.X) > 0.02 * Math.hypot(q.Z.prim.R, q.Z.prim.X))

@@ -8,7 +8,7 @@ export const DEFAULT_SPEC = { type: '3PH', rf: 0 } // fault type + resistance
 const EMPTY_SCENARIO = { relayOos: [], breakerFail: [], channels: {}, diffChannel: 'ok', dcLost: [], tripOpen: [], ctReversed: {}, ratioError: {}, vtFuse: {}, lopOff: [] }
 
 // A fault location only makes sense if its bus/line exists in this network
-const validLoc = (net, loc, config) => (loc.kind === 'none' ? !!config.features?.foundations : loc.kind === 'tap' || loc.kind === 'tapLV' ? !!activeTap(net, config)
+const validLoc = (net, loc, config) => (loc.kind === 'none' ? true : loc.kind === 'tap' || loc.kind === 'tapLV' ? !!activeTap(net, config)
   : loc.kind === 'bus' ? loc.bus in net.buses : loc.line in net.lines)
 
 export function useCoordination(config) {

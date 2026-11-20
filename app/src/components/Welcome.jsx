@@ -52,7 +52,7 @@ export function WelcomeCard({ audience, onAudience, onStartLesson, onClose }) {
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-400 mt-1">Learner level and modules (Consequences, Foundations, 87L) are in ⚙ Settings.</p>
+            <p className="text-xs text-gray-400 mt-1">Learner level and modules (87L, 87B) are in ⚙ Settings.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {lesson && (

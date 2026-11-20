@@ -129,7 +129,7 @@ export function FaultPicker({ net, faultLoc, onChange, tap = null, allowNone = f
 // Failure scenarios, collapsed by default so basic runs stay uncluttered.
 // Opens itself while any failure is active so it's never hidden in effect.
 // diffLine: show the 87L channel (A–B) when the differential feature is on
-// dcBuses: stations offered a "DC supply lost" failure (consequences module)
+// dcBuses: stations offered a "DC supply lost" failure
 // lessonHint: id of an open lesson whose "try this" uses Failures → open + outline
 export function ScenarioPanel({ relayIds, scenario, onToggleOos, onToggleBreakerFail, pilotLines = [], onSetChannel, diffLine = false, onSetDiffChannel, dcBuses = [], onToggleDc, lessonHint = null }) {
   const active = scenario.relayOos.filter(id => relayIds.includes(id)).length

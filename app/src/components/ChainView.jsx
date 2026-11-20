@@ -71,7 +71,7 @@ export default function ChainView({ config, sim, state, coord, rid: ridProp, onR
   const [ridLocal, setRidLocal] = useState('AB')
   const ridRaw = ridProp ?? ridLocal
   const setRid = onRid ?? setRidLocal
-  const inst = !!config.features?.foundations
+  const inst = true // CT/VT failures (instrument layer)
   const rid = relayIds.includes(ridRaw) ? ridRaw : relayIds[0]
   const r = config.relays[rid]
   const sc = coord.scenario

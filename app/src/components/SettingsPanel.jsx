@@ -132,6 +132,9 @@ export default function SettingsPanel({ config, onLevel, onUpdateTap, onUpdate, 
               onChange={v => onUpdateTiming('breakerCycles', v)} />
             <NumberSetting label="Coordination interval (CTI)" value={config.timing.ctiCycles} min={1} max={60} step={1} unit="cyc"
               onChange={v => onUpdateTiming('ctiCycles', v)} />
+            <NumberSetting label="Critical clearing time" value={config.consequences?.cctCycles ?? 12} min={3} max={60} step={1} unit="cyc"
+              onChange={v => onUpdate('consequences', { ...config.consequences, cctCycles: v })} />
+            <p className="text-xs text-gray-400">CCT (Consequences, Coordination tab) is illustrative: a real one comes from a stability study of the actual system.</p>
           </div>
 
           <div className="mb-4">
@@ -291,34 +294,11 @@ export default function SettingsPanel({ config, onLevel, onUpdateTap, onUpdate, 
             </div>
             <p className="text-xs text-gray-400 mb-1">Separate from the learner level, combine with any of them.</p>
             <label className="flex items-start gap-2 py-1 cursor-pointer">
-              <input type="checkbox" className="mt-0.5" checked={!!config.features?.consequences}
-                onChange={e => onUpdateFeature('consequences', e.target.checked)} />
-              <span>
-                <span className="text-sm text-gray-700 font-medium">Consequences &amp; protection chain</span>
-                <span className="block text-xs text-gray-400">Coordination tab: what the clearing time cost (critical clearing time, fault duty, arc energy, outage) and the chain of links each terminal depends on, with failures to inject</span>
-              </span>
-            </label>
-            {config.features?.consequences && (
-              <div className="mt-1 pl-6">
-                <NumberSetting label="Critical clearing time" value={config.consequences?.cctCycles ?? 12} min={3} max={60} step={1} unit="cyc"
-                  onChange={v => onUpdate('consequences', { ...config.consequences, cctCycles: v })} />
-                <p className="text-xs text-gray-400">Illustrative. A real CCT comes from a stability study of the actual system: a few cycles near large generators on EHV, much longer on remote systems.</p>
-              </div>
-            )}
-            <label className="flex items-start gap-2 py-1 cursor-pointer">
-              <input type="checkbox" className="mt-0.5" checked={!!config.features?.foundations}
-                onChange={e => onUpdateFeature('foundations', e.target.checked)} />
-              <span>
-                <span className="text-sm text-gray-700 font-medium">Foundations: bay view</span>
-                <span className="block text-xs text-gray-400">Adds a Bay tab: one terminal drawn as a station bay (breaker, CT, VT, relay, trip coil, DC, channel), what the relay sees vs what is on the line, and the protection chain with CT and VT failures</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 py-1 cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={!!config.features?.busdiff}
                 onChange={e => onUpdateFeature('busdiff', e.target.checked)} />
               <span>
                 <span className="text-sm text-gray-700 font-medium">Bus differential (87B)</span>
-                <span className="block text-xs text-gray-400">A low-impedance differential zone around bus B, on CTs on the line side of its breakers (overlapping the line zones). Needs Adjacent lines on and Infeed off{config.features?.foundations ? '' : '; the Bay tab (Foundations) shows its CTs'}</span>
+                <span className="block text-xs text-gray-400">A low-impedance differential zone around bus B, on CTs on the line side of its breakers (overlapping the line zones). Needs Adjacent lines on and Infeed off; the Bay tab shows its CTs and the whole bus</span>
               </span>
             </label>
             {config.features?.busdiff && (

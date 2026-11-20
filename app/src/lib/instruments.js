@@ -6,8 +6,7 @@
 // ratios it has been *set* to. With ideal instruments (the default) that
 // round trip is the identity, so nothing changes.
 //
-// Instrument faults are scenario entries (like relayOos, tripOpen), active
-// only with the 'foundations' module on:
+// Instrument faults are scenario entries (like relayOos, tripOpen):
 //   ctReversed: { rid: 'abc' | 'a' | 'b' | 'c' }  CT polarity reversed: all three
 //               phases (leads swapped at the terminal block) or one (a wiring error)
 //   ratioError: { rid: { ct, vt } }  configured ÷ actual ratio. The relay scales
@@ -37,9 +36,8 @@ export const VT_SETTINGS = [['1200:1', 1], ['1000:1', 1000 / 1200], ['1400:1', 1
 
 export const INSTRUMENT_FAULTS = ['ctReversed', 'ratioError', 'vtFuse']
 
-// The instrument faults that apply to this run (module gating lives here)
+// The instrument faults that apply to this run
 export function instrumentFaults(config, scenario = {}) {
-  if (!config.features?.foundations) return {}
   const out = {}
   for (const k of INSTRUMENT_FAULTS) {
     if (scenario[k] && Object.keys(scenario[k]).length) out[k] = scenario[k]

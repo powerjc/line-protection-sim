@@ -13,14 +13,14 @@ An interactive, browser-based training simulator for transmission line protectio
 - **Pilot schemes:** DCB, POTT and DCUB with channel failures (out of service, lost at fault)
 - **System realism:** a three-phase phasor network solver: source impedance (SIR), phase-to-ground faults with zero-sequence networks and k0 compensation, fault resistance, infeed, prefault load flow, memory polarization
 - **Line current differential (87L):** percentage differential characteristic, line charging current, CT error, and 87L in the clearing sequence alongside distance
-- **Why it matters:** an optional consequences card (clearing time against a critical clearing time, relative fault duty and arc energy, outage extent) and failures across the protection chain (relay, breaker, station DC supply, teleprotection channel)
+- **Why it matters:** consequences under the outcome (a one-line summary that opens to clearing time against a critical clearing time, relative fault duty and arc energy, outage extent) and failures across the protection chain (relay, breaker, station DC supply, teleprotection channel, CTs and VTs)
 - **Learner levels and audiences:** Basic / Intermediate / Advanced feature groups, and a welcome path for people who work around protection (networks, SCADA, commissioning)
-- **Foundations (bay view):** a Bay tab that draws one terminal as a station bay (breaker, CT, VT and fuse, relay, trip coil, 52a, DC, channel) and shows what is on the line, what the instruments deliver and what the relay computes side by side, with CT polarity, CT/VT ratio-setting and VT fuse failures to inject, a synthesized event report (oscillography: waveforms, relay samples, one-cycle phasor estimate, logic), and loss-of-potential logic (a blown VT fuse on a healthy line)
+- **Foundations (Bay tab):** a Bay tab that draws one terminal as a station bay (breaker, CT, VT and fuse, relay, trip coil, 52a, DC, channel) and shows what is on the line, what the instruments deliver and what the relay computes side by side, with CT polarity, CT/VT ratio-setting and VT fuse failures to inject, a synthesized event report (oscillography: waveforms, relay samples, one-cycle phasor estimate, logic), and loss-of-potential logic (a blown VT fuse on a healthy line)
 - **Bus differential (87B):** a low-impedance zone around bus B on CTs at the line side of its breakers (overlapping the line zones): what goes in must come out, a bus view with every feeder's CTs and an operate/restraint trace, and what one reversed CT does to it (a standing differential on load)
 - **Tapped lines:** an unprotected load tap on the line: tap-section faults fed from both ends (infeed underreach), faults behind the tap transformer, and the tap load as unmeasured 87L current
 - **41 guided lessons** in ten tracks, from "The relay cannot see the line", "What a fault costs" and "Zone 1: instantaneous, but short" to "Load + Rf: the sending end overreaches"
 
-Everything advanced is behind ⚙ Settings (learner level, individual features, modules) and off by default, so a first-time user sees a simple two-relay line.
+Everything advanced is behind ⚙ Settings (learner level, individual features, the 87L and 87B modules) and off by default, so a first-time user sees a simple two-relay line; the Bay tab and the consequences summary are always there.
 
 ![Differential tab: operating characteristic with every fault plotted](docs/differential.png)
 

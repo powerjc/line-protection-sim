@@ -60,9 +60,11 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   // With no fault the instrument failure happens at t = 0: healthy before, memory intact after
   const instPre = noFault ? {} : inst
   const instNow = noFault ? { ...inst, memoryIntact: true } : inst
-  // Loss-of-potential logic (Foundations module): voltage collapsed with no
-  // change in current → distance blocked and alarmed. scenario.lopOff disables it.
-  const lopOn = !!config.features?.foundations
+  // Loss-of-potential logic: voltage collapsed with no change in current →
+  // distance blocked and alarmed. scenario.lopOff disables it. It only ever acts
+  // on a relay whose VT input has failed (the voltage start), so runs without
+  // instrument failures are unchanged.
+  const lopOn = true
   const lopOff = new Set(scenario.lopOff ?? [])
   const lop = {}
 

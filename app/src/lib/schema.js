@@ -1,5 +1,7 @@
 // RelayConfig schema — serializable for future import/export.
 //
+// v15: the consequences card and the Bay tab (Foundations) are always available:
+//      the 'consequences' and 'foundations' feature flags are retired.
 // v14: bus differential (87B) module: `busdiff` settings and the 'busdiff' feature.
 // v13: Foundations module (bay view, instrument faults): the 'foundations' feature.
 // v12: unprotected load tap on line A–B (`network.lines[AB].tap`: position,
@@ -42,7 +44,7 @@ const defaultZones = () => [
 
 export const BASE_LINE = 'AB'
 
-const DEFAULT_FEATURES = { pilot: false, adjacent: false, sir: false, ground: false, rf: false, infeed: false, load: false, diff: false, consequences: false, tap: false, foundations: false, busdiff: false }
+const DEFAULT_FEATURES = { pilot: false, adjacent: false, sir: false, ground: false, rf: false, infeed: false, load: false, diff: false, tap: false, busdiff: false }
 // Unprotected load tap on line A–B (feature 'tap'). Illustrative values, pu of line A–B:
 // at = position from A (fraction), lead = tap section impedance, zt = tap transformer
 // impedance, load = load current at nominal voltage, clearCycles = tap transformer
@@ -59,7 +61,7 @@ const DEFAULT_PILOT = {
 const DEFAULT_SCHEMES = { XA: 'step', AB: 'DCB', BY: 'step' }
 
 export const DEFAULT_CONFIG = {
-  version: 14,
+  version: 15,
   lineAngleDeg: 75,
   loadAngleDeg: 20, // prefault power-transfer angle (with the 'load' feature)
   features: DEFAULT_FEATURES,
@@ -101,10 +103,10 @@ export function defaultConfig() {
   return structuredClone(DEFAULT_CONFIG)
 }
 
-// Accept any known schema version and return a current (v14) config.
+// Accept any known schema version and return a current (v15) config.
 // Each step upgrades one version, so old files walk forward in order.
 export function migrateConfig(cfg) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(cfg.version)) throw new Error(`Unsupported config version: ${cfg.version}`)
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(cfg.version)) throw new Error(`Unsupported config version: ${cfg.version}`)
   let next = cfg
   if (next.version === 1) next = v1to3(next)
   if (next.version === 2) next = v2to3(next)
@@ -119,6 +121,7 @@ export function migrateConfig(cfg) {
   if (next.version === 11) next = v11to12(next)
   if (next.version === 12) next = v12to13(next)
   if (next.version === 13) next = v13to14(next)
+  if (next.version === 14) next = v14to15(next)
   return next
 }
 
@@ -250,6 +253,15 @@ function v13to14(cfg) {
   next.features = { ...DEFAULT_FEATURES, ...next.features }
   next.busdiff = { ...DEFAULT_BUSDIFF, ...next.busdiff }
   next.version = 14
+  return next
+}
+
+// v14: retire the 'consequences' and 'foundations' flags (always on now)
+function v14to15(cfg) {
+  const next = structuredClone(cfg)
+  const { consequences, foundations, ...features } = next.features ?? {}
+  next.features = { ...DEFAULT_FEATURES, ...features }
+  next.version = 15
   return next
 }
 

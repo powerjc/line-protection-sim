@@ -4,7 +4,7 @@ import { coordinationConfig, defaultConfig } from './lib/schema'
 import { LESSONS } from './lib/lessons'
 import { LessonMenu, LessonCard, loadSeen, saveSeen } from './components/Lessons'
 import { WelcomeCard } from './components/Welcome'
-import { AUDIENCES, configForLevel, levelFeatures, loadLevelPref, saveLevelPref, loadAudiencePref, saveAudiencePref, loadWelcomed, saveWelcomed } from './lib/levels'
+import { configForLevel, levelFeatures, loadLevelPref, saveLevelPref, loadAudiencePref, saveAudiencePref, loadWelcomed, saveWelcomed, loadConsequencesPref, saveConsequencesPref } from './lib/levels'
 import { UnitsContext, loadUnitPref, saveUnitPref } from './lib/units'
 import { useSimulation } from './hooks/useSimulation'
 import RelayPanel, { k0Props, shapeProps } from './components/RelayPanel'
@@ -19,7 +19,7 @@ import { ChannelSelect, SchemeSelect, FaultSpecPicker } from './components/Scena
 
 const TABS = [
   { id: 'coord', label: 'Coordination' },
-  { id: 'bay', label: 'Bay', feature: 'foundations' },
+  { id: 'bay', label: 'Bay' },
   { id: 'study', label: 'Fault Study' },
   { id: 'diff', label: 'Differential', feature: 'diff' },
 ]
@@ -30,8 +30,11 @@ export default function App() {
   const [timeUnit, setTimeUnit] = useState(loadUnitPref)
   // Learner level: the remembered choice seeds the config at start and on Reset
   const [levelPref, setLevelPref] = useState(loadLevelPref)
-  // Audience (welcome card): picks the starting point and switches the consequences module
+  // Audience (welcome card): picks the starting point; 'around' opens the consequences details
   const [audience, setAudience] = useState(loadAudiencePref)
+  const [consOpenPref, setConsOpenPref] = useState(loadConsequencesPref)
+  const consOpen = consOpenPref ?? audience === 'around'
+  function setConsOpen(v) { setConsOpenPref(v); saveConsequencesPref(v) }
   const {
     config,
     results,
@@ -59,7 +62,7 @@ export default function App() {
     updateTopLevel,
     resetConfig,
     loadConfig,
-  } = useSimulation(() => configForLevel(levelPref, audience))
+  } = useSimulation(() => configForLevel(levelPref))
   const coordConfig = useMemo(() => coordinationConfig(config), [config])
   // A feature tab falls back to Coordination when its feature is switched off
   const tab = TABS.find(t => t.id === tabRaw && (!t.feature || config.features?.[t.feature])) ? tabRaw : 'coord'
@@ -69,7 +72,7 @@ export default function App() {
 
   function changeTimeUnit(u) { setTimeUnit(u); saveUnitPref(u) }
   function changeLevel(id) { setLevelPref(id); saveLevelPref(id); updateFeatures(levelFeatures(id)) }
-  function changeAudience(id) { setAudience(id); saveAudiencePref(id); updateFeatures(AUDIENCES.find(a => a.id === id).features) }
+  function changeAudience(id) { setAudience(id); saveAudiencePref(id); setConsOpen(id === 'around') }
 
   // ── First run ──
   const [welcome, setWelcome] = useState(() => !loadWelcomed())
@@ -93,6 +96,7 @@ export default function App() {
       setStudySpec({ ...DEFAULT_SPEC, ...l.faultSpec })
     } else {
       if (l.tab === 'bay') setBayRid(l.bayRelay ?? 'AB')
+      if (l.showConsequences) setConsOpen(true)
       coord.setFaultLoc(l.fault)
       coord.loadScenario(l.scenario ?? {})
       coord.setSpec({ ...DEFAULT_SPEC, ...l.faultSpec })
@@ -146,7 +150,7 @@ export default function App() {
       ) : tab === 'bay' ? (
         <BayView config={coordConfig} coord={coord} rid={bayRid} onRid={setBayRid} />
       ) : tab === 'coord' ? (
-        <CoordinationView config={coordConfig} coord={coord}
+        <CoordinationView config={coordConfig} coord={coord} consOpen={consOpen} onConsOpen={setConsOpen}
           failuresHint={lesson?.tab === 'coord' && lesson.tryIt.some(t => t.includes('Failures')) ? lesson.id : null}
           onUpdateZone={updateZone} onUpdateLineLength={updateLineLength} onUpdateLine={updateLine} onUpdateRelay={updateRelay} onUpdateScheme={updateScheme} />
       ) : (
