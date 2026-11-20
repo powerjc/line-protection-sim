@@ -19,7 +19,7 @@ const KIND_STYLE = {
   uncleared: 'text-red-800 font-bold',
 }
 
-const VERDICT = {
+export const VERDICT = {
   selective:       { label: 'Selective clearing',      style: 'bg-green-100 text-green-800 border-green-300' },
   tight:           { label: 'Cleared — tight margin',  style: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
   backup:          { label: 'Cleared by backup',       style: 'bg-blue-100 text-blue-800 border-blue-300' },

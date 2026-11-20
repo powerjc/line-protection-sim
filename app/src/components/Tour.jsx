@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { explain, offFeatures } from '../lib/explain'
+import { VERDICT } from './EventLog'
+import { ms } from '../lib/timeline'
 
 // Screen tour and Explain mode.
 //
@@ -44,7 +46,8 @@ export function TourProvider({ ctx, onEnableFeature, onAction, playback, childre
     const list = custom
       ? custom.map(s => {
           const ids = s.ids ?? [s.target]
-          return { ...s, ids: ids.filter(id => onScreen.includes(id) && !isControls(id)), withPlayback: ids.some(isControls) }
+          // Every lesson step carries the playback, so a Try bullet can be replayed where it is lit
+          return { ...s, ids: ids.filter(id => onScreen.includes(id) && !isControls(id)), withPlayback: true }
         }).filter(s => s.ids.length || s.withPlayback)
       : onScreen.filter(id => explain(id) && !explain(id).detail).map(id => ({ ids: [id] }))
     if (!list.length) return
@@ -60,11 +63,16 @@ export function TourProvider({ ctx, onEnableFeature, onAction, playback, childre
   const first = current[0]
   useEffect(() => {
     if (!first) return
-    const el = document.querySelector(`[data-tour="${first}"]`)
-    if (!el) return
-    // Phones: the callout is a bottom sheet, so put the panel near the top instead of the middle
-    if (window.innerWidth < 640) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 64, behavior: 'smooth' })
-    else el.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    // After a beat, so a panel the step opens (collapsed settings) has its full height
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-tour="${first}"]`)
+      if (!el) return
+      // Phones (the callout is a bottom sheet) and tall panels: near the top instead of the middle
+      if (window.innerWidth < 640 || el.offsetHeight > window.innerHeight * 0.6) {
+        window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 64, behavior: 'smooth' })
+      } else el.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    }, 60)
+    return () => clearTimeout(timer)
   }, [first, k, mode])
 
   useEffect(() => {
@@ -82,7 +90,10 @@ export function TourProvider({ ctx, onEnableFeature, onAction, playback, childre
   return (
     <TourCtx.Provider value={value}>
       {children}
-      {mode && <div className="fixed inset-0 z-40 bg-gray-900/30" aria-hidden />}
+      {/* The tour only dims: the rest of the screen stays usable. Explain mode blocks it (clicks explain, not act) */}
+      {/* A Try step isn't dimmed: its result can land anywhere on the screen, so only the ring says where to act */}
+      {mode && !(mode === 'tour' && steps[k]?.key?.startsWith('try')) &&
+        <div className={`fixed inset-0 z-40 bg-gray-900/30${mode === 'tour' ? ' pointer-events-none' : ''}`} aria-hidden />}
       {mode && <Callout />}
     </TourCtx.Provider>
   )
@@ -181,7 +192,14 @@ function MiniPlayback({ p }) {
       <button onClick={p.stepBack} className={btn} title="Previous event">◀ Step</button>
       <button onClick={p.togglePlay} className="text-sm px-2.5 py-1 rounded-lg bg-gray-800 text-white" title={p.playing ? 'Pause' : 'Play'}>{p.playing ? '⏸ Pause' : '▶ Play'}</button>
       <button onClick={p.stepForward} className={btn} title="Next event">Step ▶</button>
+      {p.toEnd && <button onClick={p.toEnd} className={btn} title="Jump to the end of the run">Run to end ▶▶</button>}
       <span className="font-mono text-xs text-gray-600 ml-1">t = {(p.time * 1000).toFixed(1)} ms <span className="text-gray-400">({(p.time * p.freqHz).toFixed(1)} cyc)</span></span>
+      {p.outcome && VERDICT[p.outcome.verdict] && (
+        <span className="basis-full flex items-center gap-2 mt-0.5">
+          <span className={`inline-block rounded border px-2 py-0.5 text-xs font-bold ${VERDICT[p.outcome.verdict].style}`}>{VERDICT[p.outcome.verdict].label}</span>
+          {p.outcome.clearedAt !== null && <span className="text-xs text-gray-500">cleared at {ms(p.outcome.clearedAt)}</span>}
+        </span>
+      )}
     </div>
   )
 }

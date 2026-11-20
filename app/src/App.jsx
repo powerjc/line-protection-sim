@@ -125,7 +125,10 @@ export default function App() {
     <TourProvider ctx={{ config: ['coord', 'station', 'bay'].includes(tab) ? coordConfig : config }} onEnableFeature={f => updateFeature(f, true)}
       onAction={a => { if (a.time !== undefined) coord.setTime(a.time === 'end' ? coord.endT : a.time) }}
       playback={['coord', 'station', 'bay'].includes(tab) ? { time: coord.time, playing: coord.playing, freqHz: config.timing.freqHz,
-        rewind: coord.rewind, stepBack: coord.stepBack, stepForward: coord.stepForward, togglePlay: coord.togglePlay } : null}>
+        rewind: coord.rewind, stepBack: coord.stepBack, stepForward: coord.stepForward, togglePlay: coord.togglePlay,
+        toEnd: () => coord.setTime(coord.endT),
+        // The verdict once the last event has played (as the outcome card reveals it)
+        outcome: coord.time >= coord.sim.events[coord.sim.events.length - 1].t - 1e-9 ? coord.sim.outcome : null } : null}>
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">

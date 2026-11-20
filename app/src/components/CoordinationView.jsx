@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BASE_LINE } from '../lib/schema'
 import { activeTap } from '../lib/network'
 import { relayColor } from '../lib/colors'
@@ -10,7 +10,7 @@ import { FaultPicker, FaultSpecPicker, ScenarioPanel } from './ScenarioPanel'
 import RelayPanel, { k0Props, shapeProps } from './RelayPanel'
 import PhasorPanel from './PhasorPanel'
 import OffStrip from './OffStrip'
-import { Target } from './Tour'
+import { Target, useTour } from './Tour'
 import ConsequencesCard from './ConsequencesCard'
 import QuickZones from './QuickZones'
 import { SchemeSelect } from './ScenarioPanel'
@@ -20,6 +20,10 @@ import { activeZones } from '../lib/protection'
 export default function CoordinationView({ config, coord, consOpen = false, onConsOpen = () => {}, onUpdateFeature, failuresHint = null, onUpdateZone, onUpdateLineLength, onUpdateLine, onUpdateRelay, onUpdateScheme }) {
   const { sim, state } = coord
   const [showSettings, setShowSettings] = useState(false)
+  // A tour or lesson step that lights the settings opens them
+  const lit = useTour()?.current ?? []
+  const settingsLit = lit.includes('coord.settings')
+  useEffect(() => { if (settingsLit) setShowSettings(true) }, [settingsLit])
   const relayIds = Object.keys(config.relays)
   // Reveal the verdict once the last event has played
   const revealed = coord.time >= sim.events[sim.events.length - 1].t - 1e-9
