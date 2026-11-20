@@ -86,3 +86,30 @@ export function outageExtent(sim, config, loc) {
     extraBuses: busesDark.filter(b => !(loc.kind === 'bus' && b === loc.bus)),
   }
 }
+
+// What the clearing time is made of, for the breaker that opened last (it set
+// the clearing time): relay (measuring and picking up), channel (pilot signal
+// transit; for DCB, the coordination timer spent waiting for a possible block;
+// for 87L, the data exchange, asymmetry included), intentional delay (zone
+// timers) and breaker (trip to contacts open). null when not cleared by a
+// line breaker (e.g. tap transformer protection) or not cleared at all.
+export function clearingBreakdown(sim, config) {
+  const cleared = sim.outcome.clearedAt
+  if (cleared === null || cleared === undefined) return null
+  const opens = sim.events.filter(e => e.kind === 'bkrOpen' && e.rid && e.t <= cleared + EPS)
+  const last = opens[opens.length - 1]
+  if (!last) return null
+  const trip = sim.events.find(e => e.kind === 'trip' && e.rid === last.rid)
+  if (!trip) return null
+  const f = config.timing.freqHz
+  const pilot = { channelCycles: 0.5, dcbCoordCycles: 2, ...config.pilot }
+  const relay = Math.min(config.timing.relayCycles / f, trip.t)
+  const tCh = pilot.channelCycles / f
+  const extra87 = { asym1: 1, asym3: 3 }[sim.scenario?.diffChannel] ?? 0
+  let channel = 0
+  if (trip.logic === 'POTT' || trip.logic === 'DCUB') channel = Math.min(tCh, trip.t - relay)
+  else if (trip.logic === 'DCB') channel = Math.min(pilot.dcbCoordCycles / f, trip.t - relay)
+  else if (trip.logic === '87L') channel = Math.min(tCh + extra87 / 1000, trip.t - relay)
+  const delay = Math.max(0, trip.t - relay - channel)
+  return { rid: last.rid, logic: trip.logic, zid: trip.zid, relay, channel, delay, breaker: last.t - trip.t, total: last.t }
+}

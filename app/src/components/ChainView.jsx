@@ -160,6 +160,8 @@ export default function ChainView({ config, sim, state, coord, rid: ridProp, onR
           <option value="ok">In service</option>
           <option value="out">Out of service</option>
           {scheme !== 'step' && <option value="lost">Lost at fault</option>}
+          {scheme === 'step' && <option value="asym1">Path switched: +1 ms one way</option>}
+          {scheme === 'step' && <option value="asym3">Path switched: +3 ms one way</option>}
         </select>
       ),
       check: 'Channel monitoring and alarms (loss of guard / signal, errors, delay); end-to-end scheme tests.',

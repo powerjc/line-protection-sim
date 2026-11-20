@@ -7,42 +7,56 @@ The sections after § Status are the design record, written as each version was 
 
 ---
 
-## Status & backlog (as of 2026-10-29)
+## Status & backlog (as of 2026-11-20)
 
 **Built**
-- **Always on (2026-11-19, schema v15):** the 'foundations' and 'consequences' module flags are retired. The Bay tab (with the protection chain, CT/VT failures, LOP, No-fault runs) is always available; Coordination shows consequences as a one-line summary under the outcome with a details expander (per-browser preference; opens by default for the “around protection” audience and in the Why-protection-matters lessons, `showConsequences`). The CCT setting moved to ⚙ Timing. 87L and 87B stay modules: they add protection that trips, and lessons compare with and without them.
-- **Bus differential module** (V6 step 1, built 2026-11-19): 87B on bus B with line-side CTs (overlapping the line zones), bus-CT polarity faults, 2 lessons
-- **Foundations module** (V5, built 2026-11-19, phases 1–4): instrument layer in the engine (CT polarity, ratio-setting error, VT fuse); Bay tab with the bay one-line, *What the relay sees* table, oscillography (synthesized event report: primary, secondary, samples, one-cycle DFT, digital) and the protection chain (moved from Coordination when the module is on); *Foundations* track (8 lessons), loss of potential (no-fault runs, LOP blocking), offered from the welcome card
-- **Coordination tab** (default): one-line with breakers, CTs and fault-current paths; zone coverage lanes with static setting checks; logic-analyzer timing chart; sequence of events; outcome verdict; 3-cycle prefault period; failure scenarios (relay out of service, stuck breaker, channel failures); sidebar with labelled fault presets and Z1/Z2 reach controls
+- **Tabs (by scale):** Coordination (the system, default), Station (one substation), Bay (one terminal), Fault Study, Differential (with the 87L module)
+- **Coordination tab:** one-line with breakers, ANSI CTs and fault-current paths; zone coverage lanes with static setting checks; logic-analyzer timing chart; sequence of events; outcome verdict; consequences summary under the outcome (fault time vs an illustrative 12-cycle critical clearing time, outage; details: relative fault duty and arc energy); 3-cycle prefault period; failure scenarios (relay out of service, stuck breaker, station DC lost, channel failures); fault presets, "No fault" (instrument failure on a healthy system), Z1/Z2 reach controls; 87B zone drawn around bus B with the module on
+- **Station tab** (built 2026-11-20): one substation (picker over the buses): its bus, every feeder bay (line relay CT on the bus side with the relay's tag and status, breaker, line, actual current in/out), a source bay where the bus is a source, the station battery (click to fail it); with 87B on that bus, the 87B CTs on the line side, the 87B relay, its card and operate/restraint; otherwise an off-strip with one click to turn 87B on. Station-mode oscillography: feeder currents into the bus (or the 87B CT secondaries and their sum)
+- **Bay tab (V5 Foundations, always available):** one terminal drawn as a station bay (bus VT, bus-side CT, breaker, trip coil, 52a, DC, relay, channel; ANSI symbols with polarity marks, polarity errors as leads swapped at a terminal block); *What the relay sees* (primary / secondary / relay-computed, ≠ marks); oscillography (synthesized event report: waveforms with DC offset, relay samples, one-cycle DFT estimate, poles interrupting at current zeros, digital rows); the protection chain with every failure, CT/VT included; the 87B CT drawn on the line side of the breaker when 87B covers that bus
 - **Fault Study tab:** six-fault suite against Relay A/B, R-X plane (MHO or quadrilateral, load point), results table
 - **Differential tab:** line A–B 87L, Iop–Ires characteristic, charging current, CT error
-- **Engine:** three-phase phasor network solver (Z1/Z0, source SIR, infeed, prefault load, 3Ø / A–G faults with Rf); relays measure V/I through a phase selector and ground (k0) / phase loops with memory polarization; discrete-event clearing with pilot schemes (DCB, POTT, DCUB) and 87L
-- **Progressive disclosure:** eight ⚙ feature toggles, all off by default; with a feature off the app behaves exactly as before it existed. Learner levels (Basic / Intermediate / Advanced) switch the seven distance features in groups; 87L is a separate module toggle (built 2026-11-11)
-- **First run:** welcome card on the Coordination tab (how to read the screen, level picker, first lesson for the level); reopen from Lessons (built 2026-11-11)
-- **Lessons:** 41 in ten tracks; every Coordination and Bay lesson's outcome (and a Bay lesson's measured Z and direction) and every "Try this" claim is checked by the test suite
-- **Consequences module** (V3 § A, built 2026-11-11): ⚙ Modules → Consequences; a card beside the outcome fills in during playback: fault time vs critical clearing time (12 cyc, illustrative), relative fault duty and arc energy, outage extent
-- **Line tap** (V4 step 1, built 2026-11-11): unprotected load tap on A–B (Advanced level); tap-section and tap LV-bus faults, tap transformer protection, true vs measured distance on the coverage lanes; *Tapped lines* track
-- **Quality:** config schema v15 with migrations from v1; 168 Vitest tests
-- **Deploy:** Docker image (unprivileged nginx) behind the host's nginx, verified locally (§ Deployment)
+- **Engine:** three-phase phasor network solver (Z1/Z0, source SIR, infeed, prefault load, 3Ø / A–G faults with Rf); instrument layer between solver and relays (CT polarity, ratio-setting error, VT fuse); relays measure through a phase selector and ground (k0) / phase loops with memory polarization (forward zones include Z = 0); loss-of-potential logic; discrete-event clearing with pilot schemes (DCB, POTT, DCUB), 87L and 87B; no-fault runs (verdicts secure / misoperation)
+- **Progressive disclosure:** seven distance feature toggles behind three learner levels (Basic / Intermediate / Advanced), all off by default; two protection modules (87L, 87B) no level switches. With a toggle off the app behaves exactly as before it existed. The Bay tab and consequences summary are always on (schema v15 retired their flags)
+- **First run and lesson paths** (paths built 2026-11-20): the welcome card asks *Which describes you?* and offers *Start the path* or *Skip ahead*. Each audience has a path through the lessons (`PATHS` in `lessons.js`), and ◀ / ▶ in a lesson follow it, so an entry lesson steps back along the path instead of into another track's last lesson; a lesson opened from the menu off the path keeps menu order. *Learning protection*: all of Foundations, then the protection tracks in order, Why protection matters last (skip ahead to *Zone 1*). *Around protection* (14 lessons): six Foundations lessons (cannot see the line, CTs, direction, a phasor takes a cycle, Z = V/I, trip vs open breaker), three protection basics (Zone 1, Zone 2 by time, remote backup), then the five Why lessons (skip ahead to *What a fault costs*). Reopen from Lessons
+- **Lessons:** 43 in ten tracks (the two bus differential lessons open on the Station tab) (Foundations, Why protection matters, Basics, Coordination, Pilot schemes, Sources & phasors, Ground faults & Rf, Tapped lines, Current differential, Bus differential); every Coordination and Bay lesson's outcome (and a Bay lesson's measured Z and direction) and every "Try this" claim is checked by the test suite
+- **Line tap** (V4 step 1): unprotected load tap on A–B (Advanced level); *Tapped lines* track
+- **Quality:** config schema v15 with migrations from v1; 176 Vitest tests
+- **Deploy:** GitHub Pages (CI: tests, build, deploy); Docker image (unprivileged nginx) behind the host's nginx (§ Deployment)
 
-**Next: V5, Foundations: the relay's view** (design draft 2026-11-19, § Roadmap → V5): an instrument layer between the solver and the relays; a Bay tab (bay one-line with the chain view moved in, plus oscillography: primary, secondary, sampled, measured); lessons 0.1–0.8. Saturation comes later.
+- **The channel in the trip path** (V3 phase 2, built 2026-11-20): clearing-time breakdown (relay + channel + delay + breaker) in the consequences details; 87L channel path presets (switched: +1 / +3 ms one way → alignment error); lessons *Latency is a setting*, *A switched path can trip 87L*
 
-**Then: V3, protection for the people around it** (design draft, § Roadmap → V3): consequences panel, protection chain view, the channel as a protection setting (latency, 87L asymmetry), digital substation (SV/GOOSE links).
+**Next**
+1. **V6 step 2, *The CT is the boundary*:** a fault between a breaker and its CTs (inside both zones), and the blind spot when both zones share one CT.
+2. **CT saturation** (V5 phase 5 / V6): the secondary trace bends; phasor error into distance, 87L and 87B (the external-fault bus trip). Later: high-impedance bus differential as a comparison.
+
+**On hold: digital substation** (V3 phase 3, § V3 → D, held 2026-11-20). The separate IEC 61850 simulator project focuses on SV and GOOSE; decide first how much belongs here (an abstract "SV stream lost" / "GOOSE not received" link state with its protection consequence) and how much there (the messages themselves). See `docs/iec61850-interface.md`.
+
+**UI rules (2026-11-20)**
+- **Visible-but-off:** a panel that needs a setting which is off stays as a one-line strip saying what it would show, what it needs, and a button to turn it on (`OffStrip`: Phasors on Coordination, 87B on the Station tab), instead of disappearing.
+- **Settings settle their own dependencies** (`lib/features.js`, `settleFeatures`, applied on every feature, level and infeed change): turning 87B on turns Adjacent lines on and bus B's infeed off; anything else that breaks those turns 87B off. No switch looks on while doing nothing.
+- **Status chips** under the header: the learner level, features beyond it, and modules; click any to open ⚙ Settings.
+
+**Next after this: the screen tour** (designed 2026-11-20, not built): registry-based rather than a fixed step list. Each panel wraps itself as a tour target (`id`, `title`, state-dependent `text`) next to its component, so the tour for a screen is whatever is on it now, in screen order. Two ways in from a **?** in the header: *Tour this screen* (spotlight step-through, dims the rest, callout pinned to the bottom like the IEC 61850 sim's `Tour.jsx`; may move playback and restores it after) and *Explain mode* (outline every target, tap for its popover). Explain mode also lists what is *not* shown and why, with one-click enable. A test checks every rendered panel has a target with text; the Playwright capture of every step at three widths joins the verification checklist.
+- **Lessons script their own spotlight steps** (proposed 2026-11-20): a lesson lists tour targets (e.g. `tour: [{ target: 'bay.ct', text, action }]`) shown in turn, in place of most of the *Watch for* text, so a learner is shown the relevant panel in place. Especially for the busy *Why protection matters* configurations, where the text has to point at things on a crowded screen.
 
 **Before / during audience testing**
-- **Complexity: simplify, separate, or guide** (raised 2026-11-11). The Coordination tab now carries a one-line, zone coverage, timing chart, sequence of events, outcome, consequences card, protection chain, phasors and settings. Options, cheapest first:
-  1. **Guided orientation (spotlight tour):** a step-through that dims everything except one area, with a callout that says what it is, how to read it, and what to look for, and drives the sim as it goes (place the fault, step to the Z1 trip, point at the TRIP badge, the timing trace, the event, the verdict). Data-driven like lessons: steps of `{ target, title, text, action }`, with `data-tour` anchors on the panels; skippable, keyboard-friendly, scrolls the target into view on phones. Offered from the welcome card and the Lessons menu; one short tour per audience.
-  2. **Lesson focus mode:** a lesson declares the panels it needs; the rest collapse to a one-line header (one click to expand). Each lesson shows only what its story uses: *What a fault costs* = one-line, events, consequences; the chain lessons add the chain.
-  3. **Separation:** split the Coordination tab into views (e.g. *Clearing*: one-line, timing, events, outcome; *Settings & coverage*: coverage lanes, reaches, relay settings; *Why it matters*: consequences, chain), or move the Why material into its own tab. Bigger change: lessons and the tour must switch views, and part of the value is seeing cause and effect on one screen.
-  - Recommendation: watch the first test sessions before choosing; where people get lost decides it. Likely order: tour first (helps every audience, touches no engine code), focus mode next (reuses lesson data), separation only if those don't settle it.
-- Fault Study vs Coordination overlap (the R-X plane could move into Coordination)
+- **Coordination complexity** (raised 2026-11-11; eased 2026-11-19 by moving the chain to the Bay tab and collapsing consequences to one line). Remaining options, cheapest first:
+  1. **Guided orientation (spotlight tour):** a step-through that dims everything except one area, with a callout that says what it is, how to read it, and what to look for, and drives the sim as it goes. Data-driven like lessons: steps of `{ target, title, text, action }`, with `data-tour` anchors on the panels; skippable, keyboard-friendly, scrolls the target into view on phones. Offered from the welcome card and the Lessons menu; one short tour per audience.
+  2. **Lesson focus mode:** a lesson declares the panels it needs; the rest collapse to a one-line header.
+  3. **Separation:** split the Coordination tab into views. Bigger change: lessons and the tour must switch views, and part of the value is seeing cause and effect on one screen.
+  - Recommendation: watch the first test sessions before choosing; where people get lost decides it.
+- Fault Study vs Coordination overlap (the R-X plane could move into Coordination); folding the Differential tab into Fault Study as a second mode, to keep the tab bar short
 
 **Backlog**
-- **Tapped lines** (V4): step 1 (unprotected load tap) built; source tap and protected (three-terminal) tap outlined
+- V3: backup clearing limit as a second marker on the fault-time meter (thermal / through-fault limit, commonly ~1 s for backup overcurrent; distinct from the CCT). Lesson 8 (*Commissioning catches it*) is largely covered by *Direction is part of the measurement* and *One reversed CT trips the bus*
+- **Tapped lines** (V4): source tap and protected (three-terminal) tap outlined; not planned for now (2026-11-19)
 - "Predict, then step" quiz mode on top of lesson data
-- Import/export and share links (the schema is serializable and migrated; see § Import / Export), for this app's own use (e.g. an instructor sending a scenario). Build only if testers ask; lessons cover most of it
+- Import/export and share links (the schema is serializable and migrated; see § Import / Export). Build only if testers ask; lessons cover most of it
 - Load encroachment is shown (load point) but not simulated as a trip (zones are evaluated from fault inception); load blinders, tilted reactance lines, negative-sequence polarizing
-- Memory-polarized MHO expansion overlay; 87L alpha plane, separate channel delay, CT ratio mismatch, charging compensation
+- Memory-polarized MHO expansion overlay; 87L alpha plane, CT ratio mismatch, charging compensation
+- A line-side VT option (the relay loses voltage when its line is dead); a three-line inset for one-phase CT wiring errors
+- COMTRADE export of the synthesized event report: only if testers ask
 - SIR controls on the one-line source symbols (currently ⚙ Settings)
 - Lessons can't set Fault Study UI state such as the R-X Relay A/B selection
 
@@ -356,7 +370,7 @@ A card beside the verdict that turns the run into costs, from data the engine al
 - **Outage extent:** which buses and lines lost supply (from the breakers that opened). A remote backup or miscoordination drops more of the system.
 - Every existing lesson gains the panel automatically.
 
-**As built** (`lib/consequences.js`, `ConsequencesCard.jsx`; ⚙ Modules → Consequences, schema v11 `features.consequences` + `consequences.cctCycles`, default 12):
+**As built** (superseded 2026-11-19: no module, a one-line summary under the outcome with a details expander; CCT in ⚙ Timing) (`lib/consequences.js`, `ConsequencesCard.jsx`; ⚙ Modules → Consequences, schema v11 `features.consequences` + `consequences.cctCycles`, default 12):
 - The engine records the fault current magnitude (`faultI`, max phase, from each network solve) in every event snapshot. `costsAt(sim, config, t)` integrates it piecewise between events, from inception to min(t, clearing): duty = ∫I²dt and arc = ∫I dt, each divided by the "fast clear" reference = inception current × (relay + breaker time). A Zone 1 clear at both ends is exactly ×1.0.
 - The card sits under the outcome on the Coordination tab and fills in as the run plays. Meters are green up to the reference tick (CCT, fast clear) and red past it. Once cleared: inside / beyond the CCT, and the outage.
 - Outage (`outageExtent`): a line is out when either breaker opened (a stuck breaker counts as closed); a bus is dark when no source reaches it through in-service lines. Reported beyond what clearing the fault must take out (the faulted line, or the faulted bus and its lines).
@@ -430,7 +444,10 @@ Behind a ⚙ "Digital substation (IEC 61850)" module, the chain view swaps coppe
 
 #### Phasing (communications-path material first)
 1. **Consequences panel + chain view on existing failures:** CCT (12 cyc, illustrative)/I²t/outage card; chain view with relay, DC, trip circuit, breaker and channel; audience question on the welcome card; lessons 1–3. Mostly UI plus a small scenario addition (DC loss). Schema bump for the CCT setting.
-2. **Channel presets:** separate internal 87L channel delay, the asymmetry preset → `differential.js`; latency stacked bar; lessons 4–5.
+2. **Channel presets:** separate internal 87L channel delay, the asymmetry preset → `differential.js`; latency stacked bar; lessons 4–5. **Built 2026-11-20:**
+   - **Clearing-time breakdown** (`clearingBreakdown()` in `consequences.js`, a stacked bar in the consequences details): for the breaker that opened last, relay (operate time) + channel (POTT/DCUB permissive transit; DCB the coordination timer spent waiting for a block; 87L the data exchange, asymmetry included) + intentional delay (zone timers) + breaker.
+   - **87L channel path presets** as 87L channel states (Failures panel and the chain's channel card): *Path switched: +1 ms / +3 ms one way*. `alignmentError()` in `differential.js`: Δ = extra/2, θ = 2πfΔ; `diffElement` rotates the remote current by θ; the 87L trip waits for the slower direction. Logged at inception (Δ and θ). No new setting: the base delay is still the ⚙ channel delay.
+   - Lessons (*Why protection matters*): *Latency is a setting* (DCB, 3-cycle channel: 21-AB overtrips an external fault at 50 ms, block arrives at 67 ms; a 4-cycle timer fixes it but every internal fault clears in 133 ms instead of 100 ms), *A switched path can trip 87L* (+3 ms: 32°, 2.34 kA through-fault on X–A gives 0.33 pu false differential, 87L trips A–B at 28 ms; +1 ms: 11°, restrains). The planned single "+3 ms" preset became two so the threshold shows.
 3. **Digital substation module:** SV stream lost and GOOSE not received; lessons 6–7.
 4. **Later:** CT polarity and VT fuse failure as chain states (lesson 8); CT saturation.
 
@@ -511,7 +528,7 @@ What changes from step 2: a breaker and relays at T, so the line has three termi
 **Where it lives (decided 2026-11-19).** A new **Bay tab**: one terminal of the same event that Coordination shows for the whole system.
 - **Same run as Coordination.** It shares the fault, scenario and playback (`useCoordination` in `App`). Coordination is the system view and Bay is one terminal's view; switching tabs mid-run shows the same moment.
 - **The chain view moves here** from Coordination, drawn as hardware (below). Coordination keeps the compact status badges on its one-line (OUT, NO DC, DC LOST, stuck breaker ring) and loses the chain section, which also helps the clutter flagged under *Complexity* in § Status. *The chain: one dead battery* stays on Coordination (it doesn't switch the module on).
-- **Gating:** one ⚙ module, "Foundations (bay view)". It shows the Bay tab and moves the chain view there; lessons that use the chain switch it on. With it off: no Bay tab, ideal instruments, and the app behaves exactly as before (chain under Coordination when Consequences is on). Schema v13: `features.foundations`, plus the migration step and test.
+- **Gating** (superseded 2026-11-19: the flag is retired in schema v15 and the Bay tab is always available): one ⚙ module, "Foundations (bay view)". It shows the Bay tab and moves the chain view there; lessons that use the chain switch it on. With it off: no Bay tab, ideal instruments, and the app behaves exactly as before (chain under Coordination when Consequences is on). Schema v13: `features.foundations`, plus the migration step and test.
 
 #### Bay tab
 **1. Bay one-line (the chain drawn as hardware).** One terminal (default 52-AB at bus A; a picker for any relay) drawn as a station bay:
@@ -620,8 +637,9 @@ Today `solveFault` passes the solver's primary V/I straight into `measure()`. Th
 - 87B now also runs on a healthy system (no-fault runs), so a wrong CT can trip on load.
 - *One reversed CT trips the bus* now has load on and opens on the bus view: 769 A standing differential before the fault (just under the 797 A pickup); with No fault and pickup 0.15 pu it trips on load (misoperation); a bus fault gives 2.19 kA vs 5.2 kA restraint (42%), fails to trip.
 - Not built (decided): a load feeder or a third protected terminal at bus B.
+- The Bay tab's terminal picker always offers **Bus B** (2026-11-20). Without bus differential in force it explains what the view needs (Adjacent lines, the 87B module, Infeed off) and offers one click to turn those on.
 
-**ANSI symbols (2026-11-19):** the Bay, bus and Coordination drawings use ANSI-style one-line symbols (`Symbols.jsx`): CTs as a half-loop on the conductor with polarity marks on the primary side and the secondary lead (line-relay CTs marked toward the bus, 87B CTs toward the line), VTs as coils with polarity marks, breakers as squares. A polarity error is drawn as the CT installed correctly with its leads crossed at a terminal block in front of the relay (the usual real cause). No legend (decided).
+**ANSI symbols (2026-11-19):** the Bay, bus and Coordination drawings use ANSI-style one-line symbols (`Symbols.jsx`): CTs as a half-loop on the conductor with polarity marks on the primary side and the secondary lead (line-relay CTs marked toward the bus, 87B CTs toward the line), VTs as coils (no polarity marks: on a one-line they matter for the CT's direction, not the VT's), breakers as squares. A polarity error is drawn as the CT installed correctly with its leads crossed at a terminal block in front of the relay (the usual real cause). No legend (decided).
 
 **Next (step 2):** *The CT is the boundary*: a fault between a breaker and its CTs (new fault location at the breaker), inside both zones thanks to the overlap; the blind spot when both zones use the same CT. Then saturation on an external fault (V5 phase 5), and possibly a high-impedance comparison.
 

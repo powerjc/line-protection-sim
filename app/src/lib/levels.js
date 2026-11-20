@@ -37,22 +37,26 @@ export const LEVELS = [
   },
 ]
 
-// Who the welcome card asks about. 'around' starts with the consequences details open
-// module on and the Why protection matters track; the level stays Basic.
+// Who the welcome card asks about. Each audience has a path through the
+// lessons (PATHS in lessons.js; prev/next follow it): firstLesson is its start,
+// skipTo where someone who knows the basics can jump in. 'around' also opens
+// the consequences details; the level stays Basic.
 export const AUDIENCES = [
   {
     id: 'learning',
     label: 'I’m learning protection',
     who: 'New protection engineers and students',
-    blurb: 'Start with distance zones, then coordination and pilot schemes. Raise the learner level in ⚙ Settings as you go.',
-    firstLesson: 'z1-basics',
+    blurb: 'Start with what the relay actually sees, then distance zones, coordination and pilot schemes. Raise the learner level in ⚙ Settings as you go.',
+    firstLesson: 'f-cannot-see',
+    skipTo: 'z1-basics',
   },
   {
     id: 'around',
     label: 'I work around protection',
     who: 'Networks, SCADA, commissioning, planning',
-    blurb: 'Start with why protection matters: what a slow clear costs, and the links it depends on, including the communications channel.',
-    firstLesson: 'why-cost',
+    blurb: 'A short path: what the relay sees, a few protection basics, then why protection matters: what a slow clear costs and the links it depends on, including the communications channel.',
+    firstLesson: 'f-cannot-see',
+    skipTo: 'why-cost',
   },
 ]
 

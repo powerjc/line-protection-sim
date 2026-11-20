@@ -9,13 +9,14 @@ import EventLog, { OutcomeCard } from './EventLog'
 import { FaultPicker, FaultSpecPicker, ScenarioPanel } from './ScenarioPanel'
 import RelayPanel, { k0Props, shapeProps } from './RelayPanel'
 import PhasorPanel from './PhasorPanel'
+import OffStrip from './OffStrip'
 import ConsequencesCard from './ConsequencesCard'
 import QuickZones from './QuickZones'
 import { SchemeSelect } from './ScenarioPanel'
 import { activeZones } from '../lib/protection'
 
 // config: the Coordination system (coordinationConfig) — base line only unless adjacent lines are unlocked
-export default function CoordinationView({ config, coord, consOpen = false, onConsOpen = () => {}, failuresHint = null, onUpdateZone, onUpdateLineLength, onUpdateLine, onUpdateRelay, onUpdateScheme }) {
+export default function CoordinationView({ config, coord, consOpen = false, onConsOpen = () => {}, onUpdateFeature, failuresHint = null, onUpdateZone, onUpdateLineLength, onUpdateLine, onUpdateRelay, onUpdateScheme }) {
   const { sim, state } = coord
   const [showSettings, setShowSettings] = useState(false)
   const relayIds = Object.keys(config.relays)
@@ -80,7 +81,9 @@ export default function CoordinationView({ config, coord, consOpen = false, onCo
 
       {/* The protection chain lives on the Bay tab */}
 
-      {config.features?.sir && <PhasorPanel config={config} sim={sim} state={state} />}
+      {config.features?.sir ? <PhasorPanel config={config} sim={sim} state={state} />
+        : <OffStrip title="Phasors" what="Voltage and current phasors at every relay, as the playback runs." needs="Source impedance & phasors (Advanced level)"
+            onEnable={onUpdateFeature && (() => onUpdateFeature('sir', true))} />}
 
       {/* Relay + line settings (shared with Fault Study) */}
       <section className="bg-white rounded-xl border border-gray-200">

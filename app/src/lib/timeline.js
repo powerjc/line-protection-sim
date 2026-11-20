@@ -15,7 +15,7 @@ import { buildNetwork, faultPosition, relayGeometry, describeLocation, activeTap
 import { solveFault, faultSpec, FAULT_TYPES } from './solver'
 import { instrumentFaults, describeInstrumentFaults } from './instruments'
 import { busZone, busDiffElement } from './busdiff'
-import { diffElement, DEFAULT_DIFF } from './differential'
+import { diffElement, DEFAULT_DIFF, alignmentError } from './differential'
 import { zoneAsserts, relayShape, zoneDelayS, ctiS, activeZones, isReverse, zoneLabel } from './protection'
 
 const T_MAX = 10 // s — safety stop
@@ -29,7 +29,7 @@ const CHANNEL_TEXT = { out: 'out of service', lost: 'lost' }
 // → operated (latched target). pending/picked fall back to 'reset' when the
 // fault current through the relay goes away.
 //
-// scenario: { relayOos: [rid], breakerFail: [rid], channels: { lineId: 'ok' | 'out' | 'lost' }, diffChannel: 'ok' | 'out', dcLost: [busId], tripOpen: [rid],
+// scenario: { relayOos: [rid], breakerFail: [rid], channels: { lineId: 'ok' | 'out' | 'lost' }, diffChannel: 'ok' | 'out' | 'asym1' | 'asym3', dcLost: [busId], tripOpen: [rid],
 //             ctReversed, ratioError, vtFuse (instrument faults, lib/instruments) }
 //   tripOpen — trip circuit open (e.g. open trip coil): the relay trips but the
 //              breaker never receives it (unlike breakerFail: received, didn't open)
@@ -114,7 +114,9 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   const diffIds = config.features?.diff ? relayIds.filter(id => config.relays[id].line === DIFF_LINE) : []
   const diffOn = diffIds.length === 2
   const diffSet = { ...DEFAULT_DIFF, ...config.diff }
+  // 87L channel: 'ok' | 'out' | 'asym1' / 'asym3' (in service, path switched: +1 / +3 ms one way)
   const diffCh = scenario.diffChannel ?? 'ok'
+  const align = alignmentError(diffCh, freqHz)
   const diff = { op: false, token: 0, blockedLogged: false }
 
   // ── Bus differential (87B) on bus B, with the 'busdiff' module ──
@@ -210,7 +212,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
 
   function update87(t) {
     const [a, b] = diffIds
-    const phases = diffElement(meas[a].Iabc, meas[b].Iabc, meas[a].Vabc, meas[b].Vabc, diffSet)
+    const phases = diffElement(meas[a].Iabc, meas[b].Iabc, meas[a].Vabc, meas[b].Vabc, diffSet, align.theta)
     const op = phases.some(ph => ph.operate)
     if (op === diff.op) return
     diff.op = op
@@ -224,7 +226,8 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
         return
       }
       log(t, 'diff', `87L ${name} differential ${ph.Iop.toFixed(2)} pu (restraint ${ph.Ires.toFixed(2)} pu) — trip after relay + channel time`)
-      schedule(t + tRelay + tCh, 'trip87', { token: diff.token })
+      // The slower direction of an asymmetric path delays the data (and so the trip)
+      schedule(t + tRelay + tCh + align.extraMs / 1000, 'trip87', { token: diff.token })
     } else if (!diffIds.some(id => tripped[id])) {
       log(t, 'reset', `87L ${name} differential drops out`)
     }
@@ -322,6 +325,9 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   if (diffOn && diffCh === 'out') {
     log(0, 'channel', `87L channel ${net.lines[DIFF_LINE].from}–${net.lines[DIFF_LINE].to} out of service — differential blocked, distance only`)
   }
+  if (diffOn && align.extraMs) {
+    log(0, 'channel', `87L channel ${net.lines[DIFF_LINE].from}–${net.lines[DIFF_LINE].to} path switched: +${align.extraMs} ms one way. Each end assumes half the round trip, so remote samples are ${align.deltaMs} ms out of step: ${Math.round(align.theta * 180 / Math.PI)}° at ${freqHz} Hz`)
+  }
 
   // Channel conditions for lines running a pilot scheme
   if (pilotOn) {
@@ -414,7 +420,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
 
   const outcome = noFault ? assessNoFault(tripped, lop)
     : assessOutcome(net, config, loc, pf, geo, { tripped, opened, breakers, clearedAt, oos, stuck, dead, tripOpen, tapFault, events, busZone: busOn ? bz : null })
-  return { events, outcome, clearedAt, pf, net, tRelay, tBkr, startT: events[0].t, fault, noFault }
+  return { events, outcome, clearedAt, pf, net, tRelay, tBkr, startT: events[0].t, fault, noFault, scenario }
 }
 
 // No power-system fault: any trip is a misoperation; no trip is secure.

@@ -36,7 +36,8 @@ export function CtSymbol({ x, y, orient = 'h', side = 1, dot = -1, r = 8, color 
 // Where a CtSymbol's secondary lead starts
 export const ctLead = ({ x, y, orient = 'h', side = 1, r = 8 }) => (orient === 'h' ? [x, y + side * r] : [x + side * r, y])
 
-// VT hanging below a tap: primary winding (bumps down), secondary (bumps up), polarity marks on the left.
+// VT hanging below a tap: primary winding (bumps down), secondary (bumps up). No polarity
+// marks: on one-lines they matter for the CT's direction, not the VT's.
 // x, y: top of the primary winding. Its secondary lead leaves from (x, y + 14).
 export function VtSymbol({ x, y, color = '#111827', strokeWidth = 2 }) {
   const coil = (yy, up) => `M ${x - 9} ${yy} a 3 3 0 0 ${up ? 1 : 0} 6 0 a 3 3 0 0 ${up ? 1 : 0} 6 0 a 3 3 0 0 ${up ? 1 : 0} 6 0`
@@ -44,8 +45,6 @@ export function VtSymbol({ x, y, color = '#111827', strokeWidth = 2 }) {
     <g>
       <path d={coil(y, false)} fill="none" stroke={color} strokeWidth={strokeWidth} />
       <path d={coil(y + 10, true)} fill="none" stroke={color} strokeWidth={strokeWidth} />
-      <circle cx={x - 12} cy={y - 2} r={DOT} fill={color} />
-      <circle cx={x - 12} cy={y + 12} r={DOT} fill={color} />
       <line x1={x} y1={y + 10} x2={x} y2={y + 14} stroke={color} strokeWidth={1.5} />
     </g>
   )

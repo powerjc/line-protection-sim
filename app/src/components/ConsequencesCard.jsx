@@ -1,4 +1,4 @@
-import { costsAt, outageExtent } from '../lib/consequences'
+import { costsAt, outageExtent, clearingBreakdown } from '../lib/consequences'
 import { ms } from '../lib/timeline'
 
 const ratio = r => (r === null ? '—' : `×${r < 10 ? r.toFixed(1) : Math.round(r)}`)
@@ -18,6 +18,37 @@ function Meter({ value, max, mark, markLabel }) {
       <div className="relative h-3.5">
         {/* Centred under the tick, or right-aligned to it near the end so it stays in the card */}
         <span className={`absolute text-[10px] leading-3 text-gray-500 whitespace-nowrap ${mark / max > 0.7 ? '-translate-x-full' : '-translate-x-1/2'}`} style={{ left: pct(mark) }}>{markLabel}</span>
+      </div>
+    </div>
+  )
+}
+
+// Clearing time = relay + channel + delay + breaker, for the breaker that opened last
+const PARTS = [
+  ['relay', 'relay', 'bg-sky-500', 'Measuring and picking up (relay operate time)'],
+  ['channel', 'channel', 'bg-indigo-500', 'Communications: pilot signal transit, DCB’s wait for a possible block, or 87L data exchange'],
+  ['delay', 'delay', 'bg-amber-400', 'Intentional delay: zone timers (step distance, remote backup)'],
+  ['breaker', 'breaker', 'bg-gray-500', 'Breaker: trip to contacts open'],
+]
+function Breakdown({ b, f }) {
+  if (!b) return null
+  const how = b.logic && b.logic !== 'step' ? b.logic : `Z${b.zid}`
+  const channelWhat = b.logic === 'DCB' ? 'channel (DCB timer: waiting for a block)' : b.logic === '87L' ? 'channel (87L data)' : 'channel'
+  return (
+    <div className="mt-1 mb-2" aria-label="Clearing time breakdown">
+      <div className="text-xs text-gray-700 flex justify-between">
+        <span>Clearing time, piece by piece <span className="text-gray-400">(52-{b.rid}, {how}, last to open)</span></span>
+        <span className="font-mono">{ms(b.total)}</span>
+      </div>
+      <div className="mt-1 flex h-3 rounded overflow-hidden bg-gray-100">
+        {PARTS.map(([k, , cls, tip]) => b[k] > 1e-9 && (
+          <div key={k} className={cls} style={{ width: `${(b[k] / b.total) * 100}%` }} title={`${tip}: ${ms(b[k])}`} />
+        ))}
+      </div>
+      <div className="mt-0.5 flex flex-wrap gap-x-3 text-[10px] text-gray-500">
+        {PARTS.map(([k, label, cls]) => b[k] > 1e-9 && (
+          <span key={k} className="flex items-center gap-1"><span className={`inline-block w-2 h-2 rounded-sm ${cls}`} />{k === 'channel' ? channelWhat : label} {ms(b[k])}</span>
+        ))}
       </div>
     </div>
   )
@@ -72,6 +103,8 @@ export default function ConsequencesCard({ config, sim, loc, time, open = true, 
         <span className="font-mono">{stillOn ? <span className="text-red-700">not cleared</span> : <>{ms(c.elapsed)} <span className="text-gray-400">({cyc(c.elapsed, f)})</span></>}</span>
       </div>
       <Meter value={stillOn ? tMax : c.elapsed} max={tMax} mark={c.cct} markLabel={`CCT ${config.consequences?.cctCycles ?? 12} cyc (illustrative)`} />
+
+      {c.done && <Breakdown b={clearingBreakdown(sim, config)} f={f} />}
 
       <div className="mt-1 text-xs text-gray-700 flex justify-between">
         <span title="∫I²dt at the fault: heating of conductors and equipment carrying fault current">Fault duty (I²t)</span>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { activeZones, zoneLabel } from '../lib/protection'
-import { buildTrace, valueAt, sampleTimes, dftAt, phasorRms, busTrace, busAt, SAMPLES_PER_CYCLE } from '../lib/waveforms'
+import { buildTrace, valueAt, sampleTimes, dftAt, phasorRms, stationTrace, busAt, SAMPLES_PER_CYCLE } from '../lib/waveforms'
 import { baseAmps, BAY_BASE } from '../lib/instruments'
 import { relayColor } from '../lib/colors'
 
@@ -10,8 +10,10 @@ import { relayColor } from '../lib/colors'
 // engine's phasors (illustrative). Click to move the playback cursor.
 //
 // With bus differential (87B) on bus B: terminals at B add an operate /
-// restraint panel; bus mode (bus = true) shows the bus instead: each 87B CT's
-// secondary current and their sum, operate / restraint, and the bus logic.
+// restraint panel. Station mode (station = a bus id, Station tab) shows the
+// station instead: each feeder's current into the bus (or, with 87B on that
+// bus, each 87B CT's secondary and their sum, and operate / restraint), and
+// every feeder breaker.
 
 const PH = [{ n: 'A', c: '#dc2626' }, { n: 'B', c: '#ca8a04' }, { n: 'C', c: '#2563eb' }]
 const LABEL_W = 116, PAD_R = 10, AXIS_H = 22, H = 64, H_SEC = 84, GAP = 10, DIG_H = 15
@@ -24,7 +26,8 @@ const fmt = (x, unit) => {
   return a >= 1000 ? `${(x / 1000).toFixed(a >= 10000 ? 0 : 1)} kV` : `${x.toFixed(a >= 10 ? 0 : 1)} V`
 }
 
-export default function Oscillography({ config, sim, state, scenario, rid, time, onSetTime, bus = false }) {
+export default function Oscillography({ config, sim, state, scenario, rid, time, onSetTime, station = null }) {
+  const bus = !!station
   const wrapRef = useRef(null)
   const [width, setWidth] = useState(800)
   const [win, setWin] = useState('all')
@@ -36,9 +39,10 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
     return () => ro.disconnect()
   }, [])
 
-  const bt = useMemo(() => busTrace(sim, config, scenario), [sim, config, scenario])
-  const showOp = !!bt && (bus || bt.zone.feeders.includes(rid))
-  const traceRid = bus && bt ? bt.zone.feeders[0] : rid
+  const stBus = station ?? config.relays[rid]?.bus
+  const bt = useMemo(() => stationTrace(sim, config, scenario, stBus), [sim, config, scenario, stBus])
+  const showOp = !!bt.zone
+  const traceRid = bus ? bt.feeders[0] : rid
   const trace = useMemo(() => buildTrace(sim, config, traceRid, scenario), [sim, config, traceRid, scenario])
   const cyc = 1 / trace.f
   const [t0, t1] = win === 'fault' ? [trace.tFault - cyc, trace.tFault + 4 * cyc]
@@ -70,9 +74,18 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
     }
     const out = { ts, nSamples: st.length }
     if (!bus) Object.assign(out, { primI: wave('I', 'prim'), primV: wave('V', 'prim'), secI: sec('I'), secV: sec('V') })
+    const Ib = baseAmps()
+    const segs = (showOp || bus) ? ts.map(t => busAt(bt, t)) : null
+    if (bus && !showOp) {
+      // Each feeder's current into the bus (phase A, primary) and their sum
+      const w = trace.w
+      const inst = (I, t) => Math.SQRT2 * Ib * (I.re * Math.cos(w * t) - I.im * Math.sin(w * t))
+      const lines = bt.feeders.map((fid, j) => ({
+        ys: ts.map((t, n) => (segs[n].into[j]?.[0] ? inst(segs[n].into[j][0], t) : 0)), color: relayColor(fid), w: Math.max(1.2, 3.6 - 1.4 * j), label: `52-${fid}`,
+      }))
+      out.busI = { lines, max: Math.max(1e-9, ...lines.flatMap(l => l.ys.map(Math.abs))), centered: true }
+    }
     if (showOp) {
-      const Ib = baseAmps()
-      const segs = ts.map(t => busAt(bt, t))
       // Operate vs restraint (worst phase, primary amps); steps at each event
       const op = segs.map(sg => sg.Iop * Ib), res = segs.map(sg => bt.slope * sg.Ires * Ib), pick = ts.map(() => bt.pickup * Ib)
       out.op = { lines: [{ ys: pick, color: '#9ca3af', dash: '2 3', w: 1 }, { ys: res, color: '#7c3aed', dash: '5 3', w: 1.4 }, { ys: op, color: '#dc2626', w: 2 }],
@@ -91,13 +104,14 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
     }
     return out
   }, [trace, bt, bus, showOp, t0, t1, plotW])
+  const feeders = bus ? bt.feeders : []
 
   // Digital signals for this terminal (from the event snapshots)
   const r = config.relays[traceRid]
   const scheme = config.features?.pilot ? config.schemes?.[r.line] ?? 'step' : 'step'
-  const digital = bus && bt ? [
-    { label: '87B OP', fn: s => !!s.bus87?.op, color: '#7c3aed' },
-    ...bt.zone.feeders.flatMap(fid => [
+  const digital = bus ? [
+    ...(showOp ? [{ label: '87B OP', fn: s => !!s.bus87?.op, color: '#7c3aed' }] : []),
+    ...feeders.flatMap(fid => [
       { label: `TRIP 52-${fid}`, fn: s => !!s.tripped[fid], color: '#dc2626' },
       { label: `52-${fid} closed`, fn: s => s.breakers[fid] !== 'open', color: '#374151' },
     ]),
@@ -116,7 +130,8 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
 
   // Layout
   const rows = bus ? [
-    { key: 'busI', title: '87B CT secondaries', sub: 'phase A, into the bus', kind: 'lines', unit: 'A', h: H_SEC },
+    showOp ? { key: 'busI', title: '87B CT secondaries', sub: 'phase A, into the bus', kind: 'lines', unit: 'A', h: H_SEC }
+      : { key: 'busI', title: 'Feeder currents', sub: 'phase A, into the bus', kind: 'lines', unit: 'A', h: H_SEC },
   ] : [
     { key: 'primI', title: 'Line current', sub: 'primary', kind: 'wave', unit: 'A', h: H },
     { key: 'primV', title: 'Line voltage', sub: 'primary', kind: 'wave', unit: 'V', h: H },
@@ -170,9 +185,9 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
     <section className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2" aria-label="Oscillography">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-gray-700">Oscillography — {bus && bt ? `bus ${bt.zone.bus} (87B)` : `21-${rid}`}</h2>
+          <h2 className="text-sm font-semibold text-gray-700">Oscillography — {bus ? `station ${station}${showOp ? ' (87B)' : ''}` : `21-${rid}`}</h2>
           <p className="text-xs text-gray-400">
-            {bus ? 'The bus differential’s view: each 87B CT, their sum, operate against restraint, and the bus breakers. '
+            {bus ? (showOp ? 'The bus differential’s view: each 87B CT, their sum, operate against restraint, and the bus breakers. ' : 'Every feeder’s current into the bus, and the feeder breakers. ')
               : 'Like a relay event report: the line, the instrument secondaries, the relay’s samples and its one-cycle phasor estimate, and its logic. '}
             Synthesized from the phasor model{bus ? '' : ' with a decaying DC offset at inception'}: illustrative. Click to move the cursor.
           </p>
@@ -187,9 +202,9 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
         </div>
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-        {bus && bt ? <>
-          {bt.zone.feeders.map(fid => <span key={fid} className="font-semibold" style={{ color: relayColor(fid) }}>— 52-{fid}</span>)}
-          <span className="text-gray-900 font-semibold">━ Σ: differential current</span>
+        {bus ? <>
+          {feeders.map(fid => <span key={fid} className="font-semibold" style={{ color: relayColor(fid) }}>— 52-{fid}</span>)}
+          {showOp && <span className="text-gray-900 font-semibold">━ Σ: differential current</span>}
         </> : <>
           {PH.map(p => <span key={p.n} className="font-semibold" style={{ color: p.c }}>— phase {p.n}</span>)}
           <span className="text-gray-500">• relay samples ({SAMPLES_PER_CYCLE}/cycle)</span>
@@ -275,8 +290,9 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
         </svg>
       </div>
       {bus ? <p className="text-[11px] text-gray-400">
-        Each 87B CT’s secondary as the relay is told it, all measured into the bus (no DC offset drawn). Healthy: the waves cancel and the sum is flat.
-        A bus fault: they add. A reversed CT: it flips, and the sum appears even on load current. Operate is compared with slope × restraint and the pickup.
+        {showOp ? '' : 'Each feeder’s current into the bus, primary (no DC offset drawn). Kirchhoff: with no source at this bus they add up to zero unless the fault is on the bus. '}
+        {showOp && <>Each 87B CT’s secondary as the relay is told it, all measured into the bus (no DC offset drawn). Healthy: the waves cancel and the sum is flat.
+        A bus fault: they add. A reversed CT: it flips, and the sum appears even on load current. Operate is compared with slope × restraint and the pickup.</>}
       </p> : <p className="text-[11px] text-gray-400">
         On the secondaries: the dots are the relay’s samples; the black line is the phase-A magnitude the relay estimates from its last cycle of samples (shaded),
         drawn at peak height against the true magnitude (dashed). It takes about a cycle to settle and the DC offset makes it wobble; that is part of why relays need time.

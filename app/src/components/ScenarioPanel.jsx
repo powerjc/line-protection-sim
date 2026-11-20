@@ -135,7 +135,7 @@ export function ScenarioPanel({ relayIds, scenario, onToggleOos, onToggleBreaker
   const active = scenario.relayOos.filter(id => relayIds.includes(id)).length
     + scenario.breakerFail.filter(id => relayIds.includes(id)).length
     + pilotLines.filter(l => (scenario.channels?.[l.id] ?? 'ok') !== 'ok').length
-    + (diffLine && scenario.diffChannel === 'out' ? 1 : 0)
+    + (diffLine && (scenario.diffChannel ?? 'ok') !== 'ok' ? 1 : 0)
     + dcBuses.filter(b => scenario.dcLost?.includes(b)).length
     + (scenario.tripOpen ?? []).filter(id => relayIds.includes(id)).length
   const [openRaw, setOpen] = useState(!!lessonHint)
@@ -191,12 +191,14 @@ export function ScenarioPanel({ relayIds, scenario, onToggleOos, onToggleBreaker
         </div>
       )}
       {diffLine && (
-        <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
+        <label className="flex flex-col gap-0.5 text-xs text-gray-600 min-w-0">
           <span>87L channel A–B</span>
           <select value={scenario.diffChannel ?? 'ok'} onChange={e => onSetDiffChannel(e.target.value)}
-            className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white">
+            className="text-xs border border-gray-300 rounded px-1 py-0.5 bg-white w-full min-w-0">
             <option value="ok">In service</option>
             <option value="out">Out of service</option>
+            <option value="asym1">Path switched: +1 ms one way</option>
+            <option value="asym3">Path switched: +3 ms one way</option>
           </select>
         </label>
       )}

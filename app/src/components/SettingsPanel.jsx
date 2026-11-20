@@ -42,9 +42,11 @@ function SirSetting({ bus, value, note, onChange }) {
   )
 }
 
-export default function SettingsPanel({ config, onLevel, onUpdateTap, onUpdate, onUpdateTiming, onUpdateFeature, onUpdatePilot, onUpdateSir, onUpdateInfeed, onUpdateBus, onReset, timeUnit, onTimeUnit }) {
+export default function SettingsPanel({ open: openProp, onOpenChange, config, onLevel, onUpdateTap, onUpdate, onUpdateTiming, onUpdateFeature, onUpdatePilot, onUpdateSir, onUpdateInfeed, onUpdateBus, onReset, timeUnit, onTimeUnit }) {
   const sirOf = id => config.network.buses.find(b => b.id === id)?.sir ?? 0
-  const [open, setOpen] = useState(false)
+  const [openLocal, setOpenLocal] = useState(false)
+  const open = openProp ?? openLocal
+  const setOpen = v => { const next = typeof v === 'function' ? v(open) : v; setOpenLocal(next); onOpenChange?.(next) }
   const level = levelOf(config.features)
   // Individual toggles: collapsed under a level, open when the mix is custom (null = follow that)
   const [showFeaturesRaw, setShowFeatures] = useState(null)
@@ -240,6 +242,23 @@ export default function SettingsPanel({ config, onLevel, onUpdateTap, onUpdate, 
                 <span className="block text-xs text-gray-400">Sources at the intermediate buses A and B (with adjacent lines, and in the Fault Study): remote infeed makes distance relays underreach</span>
               </span>
             </label>
+            {config.features?.infeed && (
+              <div className="mt-1 pl-6">
+                {['A', 'B'].map(id => {
+                  const bus = config.network.buses.find(b => b.id === id)
+                  return (
+                    <div key={id} className="flex items-center gap-2">
+                      <input type="checkbox" checked={!!bus?.infeed} onChange={e => onUpdateInfeed(id, e.target.checked)}
+                        aria-label={`Infeed source at bus ${id}`} />
+                      <div className={`flex-1 ${bus?.infeed ? '' : 'opacity-40 pointer-events-none'}`}>
+                        <SirSetting bus={id} value={sirOf(id)} onChange={v => onUpdateSir(id, v)} />
+                      </div>
+                    </div>
+                  )
+                })}
+                {!config.features?.adjacent && <p className="text-xs text-gray-400">Coordination needs Adjacent lines on to show infeed; the Fault Study always uses the full network.</p>}
+              </div>
+            )}
             <label className="flex items-start gap-2 py-1 cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={!!config.features?.tap}
                 onChange={e => onUpdateFeature('tap', e.target.checked)} />
@@ -268,23 +287,6 @@ export default function SettingsPanel({ config, onLevel, onUpdateTap, onUpdate, 
                 </div>
               )
             })()}
-            {config.features?.infeed && (
-              <div className="mt-1 pl-6">
-                {['A', 'B'].map(id => {
-                  const bus = config.network.buses.find(b => b.id === id)
-                  return (
-                    <div key={id} className="flex items-center gap-2">
-                      <input type="checkbox" checked={!!bus?.infeed} onChange={e => onUpdateInfeed(id, e.target.checked)}
-                        aria-label={`Infeed source at bus ${id}`} />
-                      <div className={`flex-1 ${bus?.infeed ? '' : 'opacity-40 pointer-events-none'}`}>
-                        <SirSetting bus={id} value={sirOf(id)} onChange={v => onUpdateSir(id, v)} />
-                      </div>
-                    </div>
-                  )
-                })}
-                {!config.features?.adjacent && <p className="text-xs text-gray-400">Coordination needs Adjacent lines on to show infeed; the Fault Study always uses the full network.</p>}
-              </div>
-            )}
             </>}
           </div>
 
@@ -298,7 +300,7 @@ export default function SettingsPanel({ config, onLevel, onUpdateTap, onUpdate, 
                 onChange={e => onUpdateFeature('busdiff', e.target.checked)} />
               <span>
                 <span className="text-sm text-gray-700 font-medium">Bus differential (87B)</span>
-                <span className="block text-xs text-gray-400">A low-impedance differential zone around bus B, on CTs on the line side of its breakers (overlapping the line zones). Needs Adjacent lines on and Infeed off; the Bay tab shows its CTs and the whole bus</span>
+                <span className="block text-xs text-gray-400">A low-impedance differential zone around bus B, on CTs on the line side of its breakers (overlapping the line zones). Turning it on also turns on Adjacent lines (bus B needs two feeders) and bus B’s infeed off (that source has no breaker here). Turning those back off turns 87B off</span>
               </span>
             </label>
             {config.features?.busdiff && (

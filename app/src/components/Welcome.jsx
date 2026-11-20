@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AUDIENCES } from '../lib/levels'
-import { LESSONS } from '../lib/lessons'
+import { LESSONS, PATHS } from '../lib/lessons'
 
 // First-run card on the Coordination tab: how to read the screen, who you
 // are (sets the starting point), then that audience's first lesson or explore.
@@ -8,8 +8,9 @@ export function WelcomeCard({ audience, onAudience, onStartLesson, onClose }) {
   const [min, setMin] = useState(false)
   const chosen = AUDIENCES.find(a => a.id === audience) ?? AUDIENCES[0]
   const lesson = LESSONS.find(l => l.id === chosen.firstLesson)
-  // Either audience can start one step earlier: what the relay actually sees
-  const basics = LESSONS.find(l => l.track === 'Foundations')
+  // Someone who already knows the basics can jump into the path further on
+  const skip = LESSONS.find(l => l.id === chosen.skipTo)
+  const pathLength = PATHS[chosen.id]?.length ?? 0
 
   return (
     <section className="mx-4 mt-4 rounded-xl border border-indigo-200 bg-indigo-50/60" aria-label="Welcome">
@@ -56,14 +57,15 @@ export function WelcomeCard({ audience, onAudience, onStartLesson, onClose }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {lesson && (
-              <button onClick={() => onStartLesson(lesson)} className="text-sm px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
-                Start lesson: {lesson.title} ▶
+              <button onClick={() => onStartLesson(lesson)} className="text-sm px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+                title={`${pathLength} lessons; ◀ / ▶ in each lesson follow this path`}>
+                Start the path: {lesson.title} ▶
               </button>
             )}
-            {basics && (
-              <button onClick={() => onStartLesson(basics)} title="Foundations track: CTs, VTs and what the relay actually sees (opens the Bay tab)"
+            {skip && (
+              <button onClick={() => onStartLesson(skip)} title={`Jump in at ${skip.track}; the path continues from there`}
                 className="text-sm px-3 py-1 rounded-lg border border-indigo-300 text-indigo-700 bg-white hover:border-indigo-500">
-                Or start from the foundations: {basics.title}
+                Skip ahead: {skip.title}
               </button>
             )}
             <button onClick={onClose} className="text-sm px-3 py-1 rounded-lg border border-indigo-300 text-indigo-700 bg-white hover:border-indigo-500">

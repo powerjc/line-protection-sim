@@ -50,10 +50,9 @@ export function LessonMenu({ activeId, seen, onStart, onWelcome }) {
   )
 }
 
-export function LessonCard({ lesson, onRestart, onPrev, onNext, onClose }) {
+// prev / next: the neighbouring lessons on the learner's path (lessonNeighbours)
+export function LessonCard({ lesson, prev, next, onRestart, onPrev, onNext, onClose }) {
   const [min, setMin] = useState(false)
-  const idx = LESSONS.indexOf(lesson)
-  const prev = LESSONS[idx - 1], next = LESSONS[idx + 1]
 
   return (
     <section className="mx-4 mt-4 rounded-xl border border-indigo-200 bg-indigo-50/60">

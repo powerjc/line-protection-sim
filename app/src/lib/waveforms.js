@@ -124,26 +124,35 @@ export function phasorRms(trace, qty, view, p, t) {
   return Math.hypot(X.re, X.im)
 }
 
-// Bus differential (87B) over the run: per event segment, each 87B CT's
-// current into the bus and the element's operate / restraint (worst phase).
-// Instrument faults apply from the start, except in a no-fault run, where
-// they happen at t = 0 (as in the engine).
-export function busTrace(sim, config, scenario) {
-  const zone = busZone(sim.net, config)
-  if (!zone) return null
+// One station over the run: per event segment, each feeder's current into the
+// bus (true primary) and, where bus differential (87B) covers this bus, each
+// 87B CT's current as the relay sees it and the element's operate / restraint
+// (worst phase). Instrument faults apply from the start, except in a no-fault
+// run, where they happen at t = 0 (as in the engine).
+export function stationTrace(sim, config, scenario, bus) {
+  const z = busZone(sim.net, config)
+  const zone = z && z.bus === bus ? z : null
+  const feeders = Object.keys(config.relays).filter(id => config.relays[id].bus === bus)
   const inst = instrumentFaults(config, scenario)
   const s = { ...config.busdiff }
   const segs = []
   for (const e of sim.events) {
     if (!e.state.meas) continue
-    const el = busDiffElement(e.state.meas, zone, sim.noFault && e.t < 0 ? {} : inst, s)
-    const worst = el.phases.reduce((w, p) => (p.Iop > w.Iop ? p : w))
-    const seg = { t0: e.t, el, Iop: worst.Iop, Ires: worst.Ires, state: e.state }
+    const into = feeders.map(rid => (e.state.meas[rid]?.prim?.Iabc ?? []).map(I => ({ re: -I.re, im: -I.im })))
+    const el = zone ? busDiffElement(e.state.meas, zone, sim.noFault && e.t < 0 ? {} : inst, s) : null
+    const worst = el ? el.phases.reduce((w, p) => (p.Iop > w.Iop ? p : w)) : null
+    const seg = { t0: e.t, into, el, Iop: worst?.Iop ?? 0, Ires: worst?.Ires ?? 0, state: e.state }
     const last = segs[segs.length - 1]
     if (last && Math.abs(last.t0 - e.t) < 1e-12) segs[segs.length - 1] = seg
     else segs.push(seg)
   }
-  return { zone, segs, pickup: s.pickupPu ?? 0.2, slope: (s.slopePct ?? 50) / 100 }
+  return { bus, zone, feeders, segs, pickup: s.pickupPu ?? 0.2, slope: (s.slopePct ?? 50) / 100 }
+}
+
+// The bus differential's station (null without 87B in force)
+export function busTrace(sim, config, scenario) {
+  const zone = busZone(sim.net, config)
+  return zone ? stationTrace(sim, config, scenario, zone.bus) : null
 }
 
 export function busAt(bt, t) {

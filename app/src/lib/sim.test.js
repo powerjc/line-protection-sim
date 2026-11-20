@@ -12,7 +12,7 @@ import { FAULTS } from './faults'
 import { LESSONS, TRACKS } from './lessons'
 import { LEVELS, AUDIENCES, LEVEL_FEATURES, trackLabel, levelOf, levelFeatures, withLevel, configForLevel } from './levels'
 import { runDifferential } from './differential'
-import { costsAt, outageExtent } from './consequences'
+import { costsAt, outageExtent, clearingBreakdown } from './consequences'
 import { busZone, busDiffElement } from './busdiff'
 import { buildTrace, valueAt, dftAt, phasorRms, busTrace, SAMPLES_PER_CYCLE } from './waveforms'
 import { instrumentFaults, BAY_BASE, baseAmps, bayQuantities, relayInstruments } from './instruments'
@@ -652,7 +652,7 @@ describe('single-line base system', () => {
 describe('lessons', () => {
   const setupOf = lesson => { const cfg = defaultConfig(); lesson.setup?.(cfg); return cfg }
 
-  it.each(LESSONS.filter(l => l.tab === 'coord' || l.tab === 'bay').map(l => [l.id, l]))('%s produces its stated outcome', (_, lesson) => {
+  it.each(LESSONS.filter(l => ['coord', 'bay', 'station'].includes(l.tab)).map(l => [l.id, l]))('%s produces its stated outcome', (_, lesson) => {
     const cfg = coordinationConfig(setupOf(lesson))
     const run = simulateFault(cfg, lesson.fault, lesson.scenario ?? {}, lesson.faultSpec)
     expect(run.outcome.verdict).toBe(lesson.expect.verdict)
@@ -1592,5 +1592,126 @@ describe('bus differential (87B)', () => {
     const a = atFault(run('bus-polarity')).meas.BA, b = atFault(run('bus-polarity', { scenario: {} })).meas.BA
     expect(a.dir).toBe(b.dir)
     expect(a.Z).toEqual(b.Z)
+  })
+})
+
+describe('the channel in the trip path (V3 phase 2)', () => {
+  const setupOf = l => { const cfg = defaultConfig(); l.setup?.(cfg); return coordinationConfig(cfg) }
+  const L = id => LESSONS.find(l => l.id === id)
+  const run = (id, patch = {}, cfgPatch) => {
+    const l = L(id)
+    const cfg = setupOf(l)
+    cfgPatch?.(cfg)
+    return { r: simulateFault(cfg, patch.fault ?? l.fault, patch.scenario ?? l.scenario ?? {}), cfg }
+  }
+  const tripOf = (r, rid) => r.events.find(e => e.kind === 'trip' && e.rid === rid)
+  const AB = f => ({ kind: 'line', line: 'AB', frac: f })
+
+  it('why-latency: block keyed 17 ms, arrives 67 ms; 21-AB trips DCB at 50 ms; 0.5 cyc → block at 25 ms, secure; timer 4 cyc → secure, internal 90% clears 133 ms (67 ms channel) vs 100 ms', () => {
+    const { r } = run('why-latency')
+    expect(ms(r.events.find(e => e.kind === 'tx' && e.rid === 'BA').t)).toBe(16.7)
+    expect(ms(r.events.find(e => e.kind === 'rx' && e.rid === 'AB').t)).toBe(66.7)
+    expect(tripOf(r, 'AB').logic).toBe('DCB')
+    expect(ms(tripOf(r, 'AB').t)).toBe(50)
+    const fast = run('why-latency', {}, c => { c.pilot.channelCycles = 0.5 }).r
+    expect(ms(fast.events.find(e => e.kind === 'rx' && e.rid === 'AB').t)).toBe(25)
+    expect(tripOf(fast, 'AB')).toBeUndefined()
+    const t4 = c => { c.pilot.dcbCoordCycles = 4 }
+    expect(tripOf(run('why-latency', {}, t4).r, 'AB')).toBeUndefined()
+    const { r: slow, cfg } = run('why-latency', { fault: AB(0.9) }, t4)
+    const b = clearingBreakdown(slow, cfg)
+    expect(ms(slow.outcome.clearedAt)).toBe(133.3)
+    expect(b.rid).toBe('AB')
+    expect(ms(b.channel)).toBe(66.7)
+    expect(ms(b.relay + b.channel + b.delay + b.breaker)).toBe(133.3)
+    expect(ms(run('why-latency', { fault: AB(0.9) }).r.outcome.clearedAt)).toBe(100)
+  })
+
+  it('why-asymmetry: 1.5 ms / 32°; 2.34 kA through, 0.33 pu false differential; 87L trips both at 28 ms; +1 ms → 11°, restrains; internal fault still operates', () => {
+    const { r } = run('why-asymmetry')
+    expect(r.events.some(e => /1\.5 ms out of step: 32°/.test(e.text))).toBe(true)
+    expect(Math.round(abs(atFault(r).meas.AB.I) * baseAmps() / 10) / 100).toBe(2.34)
+    expect(r.events.find(e => e.kind === 'diff').text).toMatch(/0\.33 pu/)
+    expect(ms(tripOf(r, 'AB').t)).toBe(28)
+    expect(tripOf(r, 'BA').logic).toBe('87L')
+    const one = run('why-asymmetry', { scenario: { diffChannel: 'asym1' } }).r
+    expect(one.events.some(e => /11°/.test(e.text))).toBe(true)
+    expect(one.events.some(e => e.logic === '87L')).toBe(false)
+    expect(run('why-asymmetry', { scenario: {} }).r.events.some(e => e.logic === '87L')).toBe(false)
+    const inside = run('why-asymmetry', { fault: AB(0.5) }).r
+    expect(inside.events.some(e => e.kind === 'diff' && /87L A–B differential/.test(e.text))).toBe(true)
+    expect(inside.outcome.verdict).toBe('selective')
+  })
+
+  it('alignment error: Δ = extra/2, θ = 2πfΔ; false differential 2·sin(θ/2)·I', async () => {
+    const { alignmentError, diffElement } = await import('./differential')
+    const a = alignmentError('asym3', 60)
+    expect(a.deltaMs).toBe(1.5)
+    expect(a.theta * 180 / Math.PI).toBeCloseTo(32.4, 1)
+    const I = [{ re: 1, im: 0 }, { re: 0, im: 0 }, { re: 0, im: 0 }]
+    const Ib = [{ re: -1, im: 0 }, { re: 0, im: 0 }, { re: 0, im: 0 }]
+    const Z = [{ re: 0, im: 0 }, { re: 0, im: 0 }, { re: 0, im: 0 }]
+    const ph = diffElement(I, Ib, Z, Z, { pickupPu: 0.3, slopePct: 30, chargingPu: 0, ctErrorPct: 0 }, a.theta)[0]
+    expect(ph.Iop).toBeCloseTo(2 * Math.sin(a.theta / 2), 9)
+    expect(alignmentError('ok', 60).theta).toBe(0)
+  })
+
+  it('breakdown pieces: Z1 = relay + breaker; remote Z2 = relay + 300 ms delay + breaker; POTT carries the channel transit', () => {
+    const c = coordinationConfig({ ...defaultConfig(), features: { ...defaultConfig().features, adjacent: true } })
+    const z1 = clearingBreakdown(simulateFault(c, AB(0.5)), c)
+    expect([ms(z1.relay), ms(z1.channel), ms(z1.delay), ms(z1.breaker)]).toEqual([16.7, 0, 0, 50])
+    const bk = clearingBreakdown(simulateFault(c, AB(0.1), { breakerFail: ['AB'] }), c)
+    expect(['XA', 'BA']).toContain(bk.rid) // both Zone 2s open at 367 ms
+    expect(ms(bk.delay)).toBe(300)
+    const p = structuredClone(c); p.features.pilot = true; p.schemes.AB = 'POTT'
+    const pt = clearingBreakdown(simulateFault(p, AB(0.9)), p)
+    expect(pt.logic).toBe('POTT')
+    expect(ms(pt.channel)).toBe(8.3)
+  })
+})
+
+describe('feature dependencies (settleFeatures)', async () => {
+  const { settleFeatures, busDiffBlocker } = await import('./features')
+  const on = (cfg, k) => settleFeatures({ ...cfg, features: { ...cfg.features, [k]: true } }, k)
+  const off = (cfg, k) => settleFeatures({ ...cfg, features: { ...cfg.features, [k]: false } })
+  const infeedB = (cfg, v) => settleFeatures({ ...cfg, network: { ...cfg.network, buses: cfg.network.buses.map(b => (b.id === 'B' ? { ...b, infeed: v } : b)) } })
+
+  it('turning 87B on brings its prerequisites: Adjacent lines on, bus B infeed off', () => {
+    let c = defaultConfig()
+    c = on(c, 'infeed'); c = infeedB(c, true)
+    const s = on(c, 'busdiff')
+    expect(s.features.adjacent).toBe(true)
+    expect(s.network.buses.find(b => b.id === 'B').infeed).toBe(false)
+    expect(busDiffBlocker(s)).toBeNull()
+  })
+
+  it('breaking a prerequisite turns 87B off; unrelated changes leave it alone', () => {
+    const c = on(defaultConfig(), 'busdiff')
+    expect(off(c, 'adjacent').features.busdiff).toBe(false)
+    expect(infeedB(on(c, 'infeed'), true).features.busdiff).toBe(false)
+    expect(on(c, 'load').features.busdiff).toBe(true)
+    expect(settleFeatures(defaultConfig())).toEqual(defaultConfig())
+  })
+})
+
+describe('lesson paths', () => {
+  it('every audience path starts at its first lesson, has no duplicates, and its skip-ahead lesson is on it', async () => {
+    const { PATHS, lessonNeighbours } = await import('./lessons')
+    for (const a of AUDIENCES) {
+      const path = PATHS[a.id]
+      expect(path[0]).toBe(a.firstLesson)
+      expect(path).toContain(a.skipTo)
+      expect(new Set(path).size).toBe(path.length)
+      for (const id of path) expect(LESSONS.some(l => l.id === id)).toBe(true)
+    }
+    // The learning path covers every lesson; Foundations first, Why protection matters last
+    expect([...PATHS.learning].sort()).toEqual(LESSONS.map(l => l.id).sort())
+    expect(LESSONS.find(l => l.id === PATHS.learning.at(-1)).track).toBe('Why protection matters')
+    // Entry lessons step back along the path, not into another track's tail
+    expect(lessonNeighbours('why-cost', 'around').prev.id).toBe('remote-backup')
+    expect(lessonNeighbours('z1-basics', 'learning').prev.track).toBe('Foundations')
+    expect(lessonNeighbours('f-cannot-see', 'around').prev).toBeNull()
+    // Off the path: menu order
+    expect(lessonNeighbours('quad', 'around').prev.id).toBe(LESSONS[LESSONS.findIndex(l => l.id === 'quad') - 1].id)
   })
 })

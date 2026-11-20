@@ -3,6 +3,7 @@ import { defaultConfig } from '../lib/schema'
 import { FAULTS } from '../lib/faults'
 import { runSimulation } from '../lib/study'
 import { DEFAULT_SPEC } from './useCoordination'
+import { settleFeatures } from '../lib/features'
 
 // baseConfig: () => config used at start and by Reset (defaults + the learner level)
 export function useSimulation(baseConfig = defaultConfig) {
@@ -50,8 +51,9 @@ export function useSimulation(baseConfig = defaultConfig) {
     setConfig(prev => ({ ...prev, timing: { ...prev.timing, [field]: value } }))
   }
 
+  // Every feature change settles dependencies (lib/features.js)
   function updateFeature(name, on) {
-    setConfig(prev => ({ ...prev, features: { ...prev.features, [name]: on } }))
+    setConfig(prev => settleFeatures({ ...prev, features: { ...prev.features, [name]: on } }, on ? name : null))
   }
 
   function updateLine(lineId, field, value) {
@@ -69,7 +71,7 @@ export function useSimulation(baseConfig = defaultConfig) {
   // Infeed at an intermediate bus; a stiff (SIR 0) infeed would hold the bus
   // at 1 pu and starve the upstream line, so switching one on starts at SIR 1
   function updateInfeed(busId, on) {
-    setConfig(prev => ({
+    setConfig(prev => settleFeatures({
       ...prev,
       network: {
         ...prev.network,
@@ -122,7 +124,7 @@ export function useSimulation(baseConfig = defaultConfig) {
 
   // Switch a group of features at once (learner levels)
   function updateFeatures(features) {
-    setConfig(prev => ({ ...prev, features: { ...prev.features, ...features } }))
+    setConfig(prev => settleFeatures({ ...prev, features: { ...prev.features, ...features } }, features.busdiff ? 'busdiff' : null))
   }
 
   // Replace the whole config (lessons)

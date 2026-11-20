@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useCoordination, DEFAULT_SPEC } from './hooks/useCoordination'
 import { coordinationConfig, defaultConfig } from './lib/schema'
-import { LESSONS } from './lib/lessons'
+import { LESSONS, lessonNeighbours } from './lib/lessons'
 import { LessonMenu, LessonCard, loadSeen, saveSeen } from './components/Lessons'
 import { WelcomeCard } from './components/Welcome'
 import { configForLevel, levelFeatures, loadLevelPref, saveLevelPref, loadAudiencePref, saveAudiencePref, loadWelcomed, saveWelcomed, loadConsequencesPref, saveConsequencesPref } from './lib/levels'
@@ -12,13 +12,16 @@ import ImpedancePlane from './components/ImpedancePlane'
 import FaultResults from './components/FaultResults'
 import DifferentialView from './components/DifferentialView'
 import SettingsPanel from './components/SettingsPanel'
+import StatusChips from './components/StatusChips'
 import CoordinationView from './components/CoordinationView'
 import BayView from './components/BayView'
+import StationView from './components/StationView'
 import { activeZones } from './lib/protection'
 import { ChannelSelect, SchemeSelect, FaultSpecPicker } from './components/ScenarioPanel'
 
 const TABS = [
   { id: 'coord', label: 'Coordination' },
+  { id: 'station', label: 'Station' },
   { id: 'bay', label: 'Bay' },
   { id: 'study', label: 'Fault Study' },
   { id: 'diff', label: 'Differential', feature: 'diff' },
@@ -27,6 +30,8 @@ const TABS = [
 export default function App() {
   const [tabRaw, setTab] = useState('coord')
   const [bayRid, setBayRid] = useState('AB') // Bay tab terminal (lessons can set it)
+  const [stationId, setStationId] = useState('B') // Station tab bus (lessons can set it)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [timeUnit, setTimeUnit] = useState(loadUnitPref)
   // Learner level: the remembered choice seeds the config at start and on Reset
   const [levelPref, setLevelPref] = useState(loadLevelPref)
@@ -96,6 +101,7 @@ export default function App() {
       setStudySpec({ ...DEFAULT_SPEC, ...l.faultSpec })
     } else {
       if (l.tab === 'bay') setBayRid(l.bayRelay ?? 'AB')
+      if (l.tab === 'station') setStationId(l.station ?? 'B')
       if (l.showConsequences) setConsOpen(true)
       coord.setFaultLoc(l.fault)
       coord.loadScenario(l.scenario ?? {})
@@ -107,7 +113,8 @@ export default function App() {
     setSeen(next)
     saveSeen(next)
   }
-  const step = d => startLesson(LESSONS[LESSONS.indexOf(lesson) + d])
+  // Prev / next follow the audience's path through the lessons
+  const nav = lesson ? lessonNeighbours(lesson.id, audience) : {}
 
   return (
     <UnitsContext.Provider value={{ unit: timeUnit, freqHz: config.timing.freqHz }}>
@@ -130,11 +137,13 @@ export default function App() {
         <div className="flex items-center gap-2">
         <LessonMenu activeId={lessonId} seen={seen} onStart={startLesson}
           onWelcome={() => { setLessonId(null); setTab('coord'); setWelcome(true) }} />
-        <SettingsPanel config={config} onLevel={changeLevel} onUpdateTap={updateTap} onUpdate={updateTopLevel} onUpdateTiming={updateTiming} onReset={resetConfig}
+        <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} config={config} onLevel={changeLevel} onUpdateTap={updateTap} onUpdate={updateTopLevel} onUpdateTiming={updateTiming} onReset={resetConfig}
           onUpdateFeature={updateFeature} onUpdatePilot={updatePilot} onUpdateSir={updateSir} onUpdateBus={updateBus} onUpdateInfeed={updateInfeed}
           timeUnit={timeUnit} onTimeUnit={changeTimeUnit} />
         </div>
       </header>
+      <StatusChips config={config} onOpenSettings={() => setSettingsOpen(true)} />
+
 
       {!lesson && welcome && tab === 'coord' && (
         <WelcomeCard audience={audience} onAudience={changeAudience} onStartLesson={startLesson} onClose={closeWelcome} />
@@ -142,15 +151,18 @@ export default function App() {
 
       {lesson && (
         <LessonCard key={lesson.id} lesson={lesson} onRestart={() => startLesson(lesson)}
-          onPrev={() => step(-1)} onNext={() => step(1)} onClose={() => setLessonId(null)} />
+          prev={nav.prev} next={nav.next} onPrev={() => startLesson(nav.prev)} onNext={() => startLesson(nav.next)} onClose={() => setLessonId(null)} />
       )}
 
       {tab === 'diff' ? (
         <DifferentialView config={config} spec={studySpec} onSpec={setStudySpec} onUpdateDiff={updateDiff} />
+      ) : tab === 'station' ? (
+        <StationView config={coordConfig} coord={coord} station={stationId} onStation={setStationId}
+          onEnableBus={() => updateFeature('busdiff', true)} />
       ) : tab === 'bay' ? (
         <BayView config={coordConfig} coord={coord} rid={bayRid} onRid={setBayRid} />
       ) : tab === 'coord' ? (
-        <CoordinationView config={coordConfig} coord={coord} consOpen={consOpen} onConsOpen={setConsOpen}
+        <CoordinationView config={coordConfig} coord={coord} consOpen={consOpen} onConsOpen={setConsOpen} onUpdateFeature={updateFeature}
           failuresHint={lesson?.tab === 'coord' && lesson.tryIt.some(t => t.includes('Failures')) ? lesson.id : null}
           onUpdateZone={updateZone} onUpdateLineLength={updateLineLength} onUpdateLine={updateLine} onUpdateRelay={updateRelay} onUpdateScheme={updateScheme} />
       ) : (

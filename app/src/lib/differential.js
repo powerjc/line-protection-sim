@@ -13,7 +13,7 @@
 import { buildNetwork, faultPosition, EPS } from './network'
 import { solveFault, PHASE } from './solver'
 import { withInfeed } from './schema'
-import { C, add, mul, scale, abs } from './complex'
+import { C, add, mul, scale, abs, polar } from './complex'
 
 export const DEFAULT_DIFF = {
   pickupPu: 0.3,    // minimum operate current
@@ -24,14 +24,31 @@ export const DEFAULT_DIFF = {
 
 const J = C(0, 1)
 
-// One phase-by-phase evaluation from the two ends' phasors
-export function diffElement(IA, IB, VA, VB, s) {
+// Channel path asymmetry (illustrative presets for the 87L channel state):
+// extra one-way delay in ms on one direction of the A–B channel
+export const DIFF_PATH_MS = { asym1: 1, asym3: 3 }
+
+// Alignment error from an asymmetric channel. With channel-based (ping-pong)
+// alignment each end assumes the one-way delay is half the round trip, so its
+// remote samples are misaligned by Δ = (t_AB − t_BA) / 2: a phase error
+// θ = 2π·f·Δ on the remote current. A through current I then shows a false
+// differential of 2·sin(θ/2)·I.
+export function alignmentError(diffChannel, freqHz) {
+  const ms = DIFF_PATH_MS[diffChannel] ?? 0
+  const delta = ms / 2 / 1000
+  return { extraMs: ms, deltaMs: ms / 2, theta: 2 * Math.PI * freqHz * delta }
+}
+
+// One phase-by-phase evaluation from the two ends' phasors.
+// theta: alignment error on the remote (B) current, radians (channel asymmetry)
+export function diffElement(IA, IB, VA, VB, s, theta = 0) {
+  const rot = polar(1, theta)
   const k = 1 - (s.ctErrorPct ?? 0) / 100
   return [0, 1, 2].map(p => {
     // Charging current, half supplied from each end, ∝ the local line voltage
     const ich = scale(mul(J, scale(add(VA[p], VB[p]), 0.5)), s.chargingPu ?? 0)
     const a = add(IA[p], scale(ich, 0.5))
-    const b = scale(add(IB[p], scale(ich, 0.5)), k)
+    const b = mul(scale(add(IB[p], scale(ich, 0.5)), k), rot)
     const Iop = abs(add(a, b))
     const Ires = (abs(a) + abs(b)) / 2
     const operate = Iop > s.pickupPu + EPS && Iop > (s.slopePct / 100) * Ires + EPS

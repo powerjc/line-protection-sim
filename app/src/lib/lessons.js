@@ -6,6 +6,7 @@
 //   coord: `fault` location + optional `scenario` (failures, channels)
 //   diff:  Differential tab (uses `faultSpec`)
 // Coordination lessons may set `showConsequences` to open the consequences details.
+//   station: Station tab: like coord, plus `station` (the bus shown, default B)
 //   bay:   Bay tab: like coord (`fault`, `scenario`), plus
 //          `bayRelay` (the terminal shown, default AB). Bay lessons also state
 //          `expect.measured`: { rid, zOhm, dir } — what the relay measures at the
@@ -274,7 +275,49 @@ export const LESSONS = [
       'Put the channel back and raise the channel delay in ⚙ Settings → Individual features → Channel delay (e.g. to 3 cycles). The clear slows down by the same amount: channel latency is part of the clearing time.',
     ],
     takeaway: 'For POTT, a dead channel costs speed, not security: the line still clears, just too slowly. Channel availability and latency are protection performance, which is why channels are monitored and their delay is part of the protection design.',
+  },  {
+    id: 'why-latency',
+    track: 'Why protection matters',
+    showConsequences: true,
+    title: 'Latency is a setting',
+    tab: 'coord',
+    setup: cfg => { why(cfg, 'DCB'); cfg.pilot.channelCycles = 3 },
+    fault: { kind: 'line', line: 'BY', frac: 0.1 },
+    expect: { verdict: 'miscoordination' },
+    intro: 'Line A–B uses DCB: an end trips on its overreaching Zone 2 after a short coordination timer, unless the other end sends a block saying the fault is behind it. The timer is 2 cycles (33 ms), sized for a fast channel. Here the channel has been rerouted over a slower path: 3 cycles (50 ms) one way. Nothing is broken; it is just slower.',
+    watch: [
+      'The fault is on line B–Y, outside A–B. 21-BA sees it behind it and keys a block at 17 ms.',
+      '21-AB’s timer runs out at 50 ms with no block received yet (it arrives at 67 ms), so 21-AB trips DCB and opens line A–B for a fault on the next line. A miscoordination, caused by a healthy but slower channel.',
+    ],
+    tryIt: [
+      'In ⚙ Settings → Individual features, set the channel delay to 0.5 cycles and replay: the block arrives at 25 ms, inside the timer, and line A–B stays in.',
+      'Back to 3 cycles, raise the DCB coordination timer to 4 cycles: the external fault is secure again. Now move the fault to line A–B at 90% and look at Consequences details. The clearing-time bar shows 67 ms of channel (the DCB timer waiting for a block): every internal fault now clears in 133 ms instead of 100 ms.',
+    ],
+    takeaway: 'Channel latency is part of the protection design. A slower path doesn’t just add its own delay: it forces a longer timer (DCB) or a slower trip (POTT), and that cost lands on every fault. Rerouting a protection channel is a protection change and needs the protection engineer’s sign-off.',
   },
+  {
+    id: 'why-asymmetry',
+    track: 'Why protection matters',
+    showConsequences: true,
+    title: 'A switched path can trip 87L',
+    tab: 'coord',
+    setup: cfg => { why(cfg, 'step'); cfg.features.diff = true },
+    fault: { kind: 'line', line: 'XA', frac: 0.9 },
+    scenario: { diffChannel: 'asym3' },
+    expect: { verdict: 'miscoordination' },
+    intro: 'Line A–B has line current differential (87L): each end sends its current samples to the other, and the zone trips if what goes in doesn’t come out. To compare the two ends, each relay must line up samples taken at the same instant. Without a time source like GPS, it measures the round-trip delay over the channel and assumes each direction takes half. Here the network has rerouted one direction of the A–B channel over a longer path: +3 ms one way, the other direction unchanged.',
+    watch: [
+      'At inception the log spells it out: each end assumes half the round trip, so the remote samples are 1.5 ms out of step, which is 32° at 60 Hz.',
+      'The fault is on line X–A, outside A–B: 2.34 kA flows straight through line A–B. Lined up correctly, the two ends’ currents cancel. Rotated by 32°, they leave 0.33 pu (1.3 kA) of false differential, above the 0.3 pu pickup and the 30% slope.',
+      '87L trips both ends of line A–B at 28 ms for a fault that isn’t on it: a miscoordination. (The 3 ms also delays the data, so even this trip comes 3 ms later than usual.)',
+    ],
+    tryIt: [
+      'Under Failures → 87L channel A–B, choose Path switched: +1 ms one way: 0.5 ms out of step, 11°, about 19% false differential, and 87L restrains.',
+      'Back to +3 ms and move the fault onto line A–B at 50%: a real internal fault still trips. Asymmetry hurts when current flows through the line, not when it flows in from both ends.',
+    ],
+    takeaway: 'For 87L the channel is not just in the trip path, it is in the measurement. A path that is fine for data can be wrong for differential protection if the two directions differ. Utilities control this by pinning protection channels to fixed paths, alarming on a change in channel delay, or aligning samples with GPS time instead of the channel; the separate IEC 61850 simulator covers time synchronization in detail.',
+  },
+
 
   // ───────────── Basics ─────────────
   {
@@ -852,8 +895,8 @@ export const LESSONS = [
     id: 'bus-basics',
     track: 'Bus differential',
     title: 'Bus differential: what goes in must come out',
-    tab: 'bay',
-    bayRelay: 'BA',
+    tab: 'station',
+    station: 'B',
     setup: busdiff,
     fault: { kind: 'bus', bus: 'B' },
     expect: { verdict: 'selective', measured: { rid: 'BA', zOhm: 0, dir: -1 } },
@@ -861,7 +904,7 @@ export const LESSONS = [
     watch: [
       'Step to the fault. In the 87B card, 1.59 kA comes in from line A–B and 3.62 kA from line B–Y. Nothing goes out, so the sum (operate) is about 5.2 kA: 100% of the restraint.',
       '87B operates and trips both bus breakers at 17 ms; the fault is cleared at 67 ms.',
-      'On the bay drawing, the 87B CT sits on the line side of 52-BA and the line relay’s CT on the bus side. Each zone reaches past the breaker to the other’s CT, so the zones overlap and there is no gap at the breaker. 21-BA sees this fault behind it (reverse) and stays out.',
+      'On the station drawing, each feeder has the line relay’s CT on the bus side of its breaker and the 87B CT on the line side. Each zone reaches past the breaker to the other’s CT, so the zones overlap and there is no gap at the breaker. 21-BA sees this fault behind it (reverse) and stays out.',
     ],
     tryIt: [
       'Move the fault to line B–Y at 10%. Current from line A–B flows through the bus and out to B–Y: the two 87B currents (1.56 kA each) cancel, the sum is 0, and 87B restrains. B–Y’s own relays clear the fault.',
@@ -873,13 +916,13 @@ export const LESSONS = [
     id: 'bus-polarity',
     track: 'Bus differential',
     title: 'One reversed CT trips the bus',
-    tab: 'bay',
-    bayRelay: 'bus:B',
+    tab: 'station',
+    station: 'B',
     setup: cfg => { busdiff(cfg); cfg.features.load = true },
     fault: { kind: 'line', line: 'BY', frac: 0.1 },
     scenario: { ctReversed: { 'bus:BY': 'abc' } },
     expect: { verdict: 'miscoordination', measured: { rid: 'BA', zOhm: 1.2, dir: -1 } },
-    intro: 'The 87B CT on 52-BY was wired backwards (or replaced and never polarity-checked). Nothing has tripped yet, but the bus differential has been seeing it all along: with load flowing through the bus, a reversed CT reports load leaving as load arriving. This view shows the whole bus: every feeder, its CTs, and the 87B relay adding them up.',
+    intro: 'The 87B CT on 52-BY was wired backwards (or replaced and never polarity-checked). Nothing has tripped yet, but the bus differential has been seeing it all along: with load flowing through the bus, a reversed CT reports load leaving as load arriving. The Station tab shows the whole bus: every feeder, its CTs, and the 87B relay adding them up.',
     watch: [
       'Step back to before the fault (−50 ms): 384 A of load comes in from line A–B and leaves to line B–Y. The reversed CT reports it as coming in, so 87B sees 769 A of operate current with no fault anywhere: 100% of restraint, just under the 797 A pickup. On the oscillography the two CT secondaries add instead of cancelling, and the operate trace sits just under the pickup line.',
       'Then a fault on line B–Y at 10%, outside the zone: 1.56 kA in and the same out, reported as 3.11 kA of differential. 87B trips both bus breakers at 17 ms: bus B goes dark and line A–B is lost for a fault on line B–Y, a miscoordination. 21-YB’s Zone 2 clears the far end at 367 ms.',
@@ -896,3 +939,33 @@ export const LESSONS = [
 ]
 
 export const lessonById = id => LESSONS.find(l => l.id === id)
+
+// ── Paths ──
+// One ordered path through the lessons per welcome-card audience. Prev/next in
+// a lesson follow the learner's path; a lesson opened from the menu that isn't
+// on it falls back to menu order. The Lessons menu stays grouped by track.
+const inTrack = t => LESSONS.filter(l => l.track === t).map(l => l.id)
+export const PATHS = {
+  // Everything: what the relay sees, then protection track by track, then why it matters
+  learning: [
+    ...inTrack('Foundations'),
+    ...TRACKS.filter(t => t !== 'Foundations' && t !== 'Why protection matters').flatMap(inTrack),
+    ...inTrack('Why protection matters'),
+  ],
+  // A short path for people who work around protection: enough of what the relay
+  // sees and how zones and backup work to read the busier Why lessons
+  around: [
+    'f-cannot-see', 'f-ct', 'f-polarity', 'f-samples', 'f-z', 'f-trip',
+    'z1-basics', 'z2-time', 'remote-backup',
+    ...inTrack('Why protection matters'),
+  ],
+}
+
+export function lessonNeighbours(id, audience = 'learning') {
+  const path = PATHS[audience] ?? PATHS.learning
+  const byId = x => LESSONS.find(l => l.id === x) ?? null
+  const k = path.indexOf(id)
+  if (k >= 0) return { prev: byId(path[k - 1]), next: byId(path[k + 1]) }
+  const i = LESSONS.findIndex(l => l.id === id)
+  return { prev: LESSONS[i - 1] ?? null, next: LESSONS[i + 1] ?? null }
+}
