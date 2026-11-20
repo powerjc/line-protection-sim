@@ -10,6 +10,7 @@ import { FaultPicker, FaultSpecPicker, ScenarioPanel } from './ScenarioPanel'
 import RelayPanel, { k0Props, shapeProps } from './RelayPanel'
 import PhasorPanel from './PhasorPanel'
 import OffStrip from './OffStrip'
+import { Target } from './Tour'
 import ConsequencesCard from './ConsequencesCard'
 import QuickZones from './QuickZones'
 import { SchemeSelect } from './ScenarioPanel'
@@ -32,21 +33,26 @@ export default function CoordinationView({ config, coord, consOpen = false, onCo
       <div className="flex flex-col lg:flex-row gap-4 min-h-0">
         {/* Left: fault + scenario */}
         <aside className="lg:w-64 flex flex-col gap-6 bg-white rounded-xl border border-gray-200 p-4 shrink-0">
-          <FaultPicker net={sim.net} faultLoc={coord.faultLoc} onChange={coord.setFaultLoc} tap={activeTap(sim.net, config)} allowNone />
-          <FaultSpecPicker config={config} spec={coord.spec} onChange={coord.setSpec} />
+          <Target id="coord.fault" className="flex flex-col gap-6 rounded-lg">
+            <FaultPicker net={sim.net} faultLoc={coord.faultLoc} onChange={coord.setFaultLoc} tap={activeTap(sim.net, config)} allowNone />
+            <FaultSpecPicker config={config} spec={coord.spec} onChange={coord.setSpec} />
+          </Target>
           <hr className="border-gray-100" />
+          <Target id="coord.failures" className="rounded-lg">
           <ScenarioPanel relayIds={relayIds} scenario={coord.scenario}
             onToggleOos={coord.toggleOos} onToggleBreakerFail={coord.toggleBreakerFail}
             pilotLines={pilotLines} onSetChannel={coord.setChannel}
             diffLine={!!config.features?.diff} onSetDiffChannel={coord.setDiffChannel}
             lessonHint={failuresHint}
             dcBuses={[...new Set(relayIds.map(id => config.relays[id].bus))]} onToggleDc={coord.toggleDc} />
+          </Target>
           <hr className="border-gray-100" />
-          <QuickZones config={config} onUpdateZone={onUpdateZone} />
+          <Target id="coord.reach" className="rounded-lg"><QuickZones config={config} onUpdateZone={onUpdateZone} /></Target>
         </aside>
 
         {/* Center: one-line + time-distance */}
         <main className="flex-1 bg-white rounded-xl border border-gray-200 p-4 min-w-0 flex flex-col gap-3">
+          <Target id="coord.oneline" className="flex flex-col gap-3 rounded-lg">
           <div className="flex items-baseline justify-between">
             <h2 className="text-sm font-semibold text-gray-700">One-line &amp; zone coverage</h2>
             <span className="text-xs text-gray-400 hidden md:inline">
@@ -60,9 +66,12 @@ export default function CoordinationView({ config, coord, consOpen = false, onCo
               <CoordinationDiagram config={config} sim={sim} state={state} scenario={coord.scenario} faultLoc={coord.faultLoc} onPickFault={coord.setFaultLoc} />
             </div>
           </div>
+          </Target>
           <hr className="border-gray-100" />
+          <Target id="coord.timing" className="rounded-lg">
           <TimingChart config={config} sim={sim} time={coord.time} endT={coord.endT} onSetTime={coord.setTime}
-            controls={<SimControls coord={coord} freqHz={config.timing.freqHz} />} />
+            controls={<Target id="coord.controls" className="rounded-lg"><SimControls coord={coord} freqHz={config.timing.freqHz} /></Target>} />
+          </Target>
         </main>
 
         {/* Right: outcome + event log */}
@@ -71,22 +80,24 @@ export default function CoordinationView({ config, coord, consOpen = false, onCo
             <h2 className="text-sm font-semibold text-gray-700">Sequence of events</h2>
             <p className="text-xs text-gray-400">Step through, or click an event to jump to it</p>
           </div>
-          <OutcomeCard outcome={sim.outcome} revealed={revealed} />
-          {coord.faultLoc.kind !== 'none' && <ConsequencesCard config={config} sim={sim} loc={coord.faultLoc} time={coord.time} open={consOpen} onToggle={() => onConsOpen(!consOpen)} />}
-          <div data-scroll-box className="relative overflow-y-auto max-h-[28rem]">
+          <Target id="coord.outcome" inset><OutcomeCard outcome={sim.outcome} revealed={revealed} /></Target>
+          {coord.faultLoc.kind !== 'none' && <Target id="coord.consequences" inset><ConsequencesCard config={config} sim={sim} loc={coord.faultLoc} time={coord.time} open={consOpen} onToggle={() => onConsOpen(!consOpen)} /></Target>}
+          <Target id="coord.events" inset data-scroll-box className="relative overflow-y-auto max-h-[28rem]">
             <EventLog events={sim.events} eventIdx={coord.eventIdx} onSelect={coord.setTime} />
-          </div>
+          </Target>
         </section>
       </div>
 
       {/* The protection chain lives on the Bay tab */}
 
+      <Target id="coord.phasors" className="rounded-xl">
       {config.features?.sir ? <PhasorPanel config={config} sim={sim} state={state} />
         : <OffStrip title="Phasors" what="Voltage and current phasors at every relay, as the playback runs." needs="Source impedance & phasors (Advanced level)"
             onEnable={onUpdateFeature && (() => onUpdateFeature('sir', true))} />}
+      </Target>
 
       {/* Relay + line settings (shared with Fault Study) */}
-      <section className="bg-white rounded-xl border border-gray-200">
+      <Target as="section" id="coord.settings" className="bg-white rounded-xl border border-gray-200">
         <button onClick={() => setShowSettings(s => !s)}
           className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700">
           <span>Relay &amp; line settings — all terminals</span>
@@ -156,7 +167,7 @@ export default function CoordinationView({ config, coord, consOpen = false, onCo
             <p className="text-xs text-gray-400">Reach is % of each relay's own line. 21-AB / 21-BA are the Relay A / Relay B of the Fault Study tab.</p>
           </div>
         )}
-      </section>
+      </Target>
     </div>
   )
 }

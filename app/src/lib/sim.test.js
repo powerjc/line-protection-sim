@@ -665,8 +665,9 @@ describe('lessons', () => {
     }
   })
 
-  it('lessons that send you to Failures are Coordination lessons (the panel opens and is outlined there)', () => {
-    const uses = LESSONS.filter(l => l.tryIt.some(t => t.includes('Failures')))
+  it('lessons that send you to Failures are Coordination lessons (the panel opens and is outlined there)', async () => {
+    const { bulletText } = await import('./lessons')
+    const uses = LESSONS.filter(l => l.tryIt.some(t => bulletText(t).includes('Failures')))
     expect(uses.length).toBeGreaterThan(0)
     for (const l of uses) expect(l.tab).toBe('coord')
   })
@@ -1713,5 +1714,54 @@ describe('lesson paths', () => {
     expect(lessonNeighbours('f-cannot-see', 'around').prev).toBeNull()
     // Off the path: menu order
     expect(lessonNeighbours('quad', 'around').prev.id).toBe(LESSONS[LESSONS.findIndex(l => l.id === 'quad') - 1].id)
+  })
+})
+
+describe('screen tour / explain mode', async () => {
+  const { EXPLAIN, explain, offFeatures, OFF_FEATURES } = await import('./explain')
+  const { readFileSync, readdirSync } = await import('fs')
+  const { join } = await import('path')
+  const dir = join(__dirname, '..', 'components')
+  const sources = [...readdirSync(dir).filter(f => f.endsWith('.jsx')).map(f => readFileSync(join(dir, f), 'utf8')), readFileSync(join(__dirname, '..', 'App.jsx'), 'utf8')].join('\n')
+  const used = new Set([...sources.matchAll(/<Target[^>]*\sid="([a-z]+\.[a-z0-9.]+)"/g), ...sources.matchAll(/ex\('([a-z]+\.[a-z0-9.]+)'/g)].map(m => m[1]))
+  // The protection chain's cards are marked bay.chain.<link id>
+  const chain = readFileSync(join(dir, 'ChainView.jsx'), 'utf8')
+  if (chain.includes('`bay.chain.${id}`')) for (const m of chain.matchAll(/^\s+id: '([a-z]+)',$/gm)) used.add(`bay.chain.${m[1]}`)
+
+  it('every target marked in the components has a title and text, and every entry is used', () => {
+    expect(used.size).toBeGreaterThan(20)
+    for (const id of used) expect(EXPLAIN[id], id).toBeTruthy()
+    for (const id of Object.keys(EXPLAIN)) expect(used.has(id), `${id} is never marked`).toBe(true)
+  })
+
+  it('texts render with everything off and everything on', () => {
+    const off = defaultConfig()
+    const on = defaultConfig(); for (const o of OFF_FEATURES) on.features[o.feature] = true
+    for (const config of [off, on]) {
+      for (const id of Object.keys(EXPLAIN)) {
+        const e = explain(id, { config })
+        expect(e.title.length, id).toBeGreaterThan(3)
+        expect(e.text.length, id).toBeGreaterThan(40)
+      }
+    }
+    expect(offFeatures(on)).toEqual([])
+    expect(offFeatures(off).length).toBe(OFF_FEATURES.length)
+  })
+
+  it('lesson bullets point only at targets on their own tab', async () => {
+    const { lessonSteps } = await import('./lessons')
+    const prefix = { coord: 'coord.', bay: 'bay.', station: 'station.', study: 'study.', diff: 'diff.' }
+    const withSteps = LESSONS.filter(l => lessonSteps(l).length)
+    expect(withSteps.length).toBeGreaterThan(0)
+    for (const l of withSteps) {
+      for (const step of lessonSteps(l)) {
+        for (const id of step.ids) {
+          expect(EXPLAIN[id], `${l.id}: ${id}`).toBeTruthy()
+          expect(id.startsWith(prefix[l.tab]) || id.startsWith('header.'), `${l.id}: ${id}`).toBe(true)
+        }
+        expect(step.text.length).toBeGreaterThan(20)
+        if (step.action) expect(step.action.time === 'end' || typeof step.action.time === 'number').toBe(true)
+      }
+    }
   })
 })

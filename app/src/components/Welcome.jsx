@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AUDIENCES } from '../lib/levels'
+import { useTour } from './Tour'
 import { LESSONS, PATHS } from '../lib/lessons'
 
 // First-run card on the Coordination tab: how to read the screen, who you
@@ -10,6 +11,7 @@ export function WelcomeCard({ audience, onAudience, onStartLesson, onClose }) {
   const lesson = LESSONS.find(l => l.id === chosen.firstLesson)
   // Someone who already knows the basics can jump into the path further on
   const skip = LESSONS.find(l => l.id === chosen.skipTo)
+  const tour = useTour()
   const pathLength = PATHS[chosen.id]?.length ?? 0
 
   return (
@@ -68,6 +70,10 @@ export function WelcomeCard({ audience, onAudience, onStartLesson, onClose }) {
                 Skip ahead: {skip.title}
               </button>
             )}
+            <button onClick={() => { onClose(); setTimeout(() => tour?.startTour(), 0) }} title="Step through each panel of this screen (also under ? at the top)"
+              className="text-sm px-3 py-1 rounded-lg border border-indigo-300 text-indigo-700 bg-white hover:border-indigo-500">
+              Tour this screen
+            </button>
             <button onClick={onClose} className="text-sm px-3 py-1 rounded-lg border border-indigo-300 text-indigo-700 bg-white hover:border-indigo-500">
               Explore on my own
             </button>

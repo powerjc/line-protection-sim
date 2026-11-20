@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { abs } from '../lib/complex'
 import { relayColor } from '../lib/colors'
 import { zoneLabel } from '../lib/protection'
+import { useExplain } from './Tour'
 import { CT_SETTINGS, VT_SETTINGS, BAY_BASE, baseAmps } from '../lib/instruments'
 
 // Protection chain for one terminal: every link between the fault and the
@@ -17,9 +18,10 @@ const STYLE = {
 
 function Link({ id, name, status, live, control, check, last }) {
   const st = STYLE[status]
+  const ex = useExplain()
   return (
     <li className="flex items-stretch gap-1 min-w-0">
-      <div id={`chain-${id}`} className={`flex-1 min-w-0 rounded-lg border ${st.box} px-2.5 py-2 flex flex-col gap-1 transition`}>
+      <div id={`chain-${id}`} {...ex(`bay.chain.${id}`, `flex-1 min-w-0 rounded-lg border ${st.box} px-2.5 py-2 flex flex-col gap-1 transition`)}>
         <div className="flex items-center justify-between gap-1">
           <span className="text-xs font-semibold text-gray-800">{name}</span>
           <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 ${st.tag}`}>{st.label}</span>

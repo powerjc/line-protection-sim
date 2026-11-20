@@ -21,6 +21,8 @@ An interactive, browser-based training simulator for transmission line protectio
 - **Tapped lines:** an unprotected load tap on the line: tap-section faults fed from both ends (infeed underreach), faults behind the tap transformer, and the tap load as unmeasured 87L current
 - **43 guided lessons** in ten tracks, from "The relay cannot see the line", "What a fault costs" and "Zone 1: instantaneous, but short" to "Load + Rf: the sending end overreaches"
 
+A **?** at the top tours each screen or explains any panel on it (and what is switched off); lessons point at the screen: each *Watch for* / *Try this* bullet can spotlight the panels it means, and *Show me* walks through them (and on into the next lesson).
+
 Everything advanced is behind ⚙ Settings (learner level, individual features, the 87L and 87B modules) and off by default, so a first-time user sees a simple two-relay line; the Bay tab and the consequences summary are always there.
 
 ![Differential tab: operating characteristic with every fault plotted](docs/differential.png)

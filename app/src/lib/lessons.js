@@ -57,13 +57,13 @@ export const LESSONS = [
     expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 10, dir: 1 } },
     intro: 'Relay 21-AB sits in the control house at station A. Line A–B runs off toward station B; the relay can’t see it, and it can’t see the fault. Everything it knows arrives on wires: three currents from the CT, three voltages from the VT, the breaker’s 52a contact saying whether the breaker is closed, and, with a pilot scheme, a signal from the other end. This tab draws one terminal as a station bay so you can follow each of those inputs.',
     watch: [
-      'Step once to the fault (0 ms). On the drawing, 1.99 kA flows from the bus toward the line. The CT turns it into 8.3 A on its secondary wiring, and the VT turns the collapsed 19.9 kV phase voltage into 16.6 V.',
-      'What the relay sees: the same quantities three ways: on the line, at the relay terminals, and as the relay computes them back. Here they agree, so there are no ≠ marks.',
-      'From V and I the relay works out Z = 10.0 Ω forward: half of the 20 Ω line. Zone 1 trips at 17 ms; 52-AB opens at 67 ms, its 52a contact goes open and the current stops.',
+      { text: 'Step once to the fault (0 ms). On the drawing, 1.99 kA flows from the bus toward the line. The CT turns it into 8.3 A on its secondary wiring, and the VT turns the collapsed 19.9 kV phase voltage into 16.6 V.', show: ['bay.drawing', 'bay.controls'], at: 0 },
+      { text: 'What the relay sees: the same quantities three ways: on the line, at the relay terminals, and as the relay computes them back. Here they agree, so there are no ≠ marks.', show: ['bay.relayview'], at: 0 },
+      { text: 'From V and I the relay works out Z = 10.0 Ω forward: half of the 20 Ω line. Zone 1 trips at 17 ms; 52-AB opens at 67 ms, its 52a contact goes open and the current stops.', show: ['bay.relayview', 'bay.events'], at: 'end' },
     ],
     tryIt: [
-      'In the Protection chain, set the VT fuse to All blown and step to the fault. Nothing changed on the line, but the relay’s voltage is zero: Z reads 0 Ω with no direction, so 21-AB can’t decide and never trips. 21-BA clears its end; station A keeps feeding the fault, and in this model it is never cleared.',
-      'Put the fuse back and pick terminal BA: the same fault from the other end. Its bus voltage is 24.9 kV and its current 2.49 kA, and it also measures 10.0 Ω from its own end.',
+      { text: 'In the Protection chain, set the VT fuse to All blown and step to the fault. Nothing changed on the line, but the relay’s voltage is zero: Z reads 0 Ω with no direction, so 21-AB can’t decide and never trips. 21-BA clears its end; station A keeps feeding the fault, and in this model it is never cleared.', show: ['bay.chain.vt', 'bay.controls'] },
+      { text: 'Put the fuse back and pick terminal BA: the same fault from the other end. Its bus voltage is 24.9 kV and its current 2.49 kA, and it also measures 10.0 Ω from its own end.', show: ['bay.chain.vt', 'bay.picker'] },
     ],
     takeaway: 'A relay only knows what its inputs tell it: currents, voltages, breaker status and, with a scheme, the remote end. If an input is missing or wrong, the relay makes the wrong decision about a perfectly real fault. The rest of this track takes those inputs one at a time.',
   },
@@ -77,12 +77,12 @@ export const LESSONS = [
     expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 19, dir: 1 } },
     intro: 'A current transformer (CT) has the line conductor as its primary. A 1200:5 CT makes 5 A on its secondary when 1200 A flows on the line. The relay multiplies the secondary current back up by the ratio it is set to, so that setting has to match the CT that is actually installed.',
     watch: [
-      'Fault at 95% of A–B: 1.63 kA on the line, 6.8 A at the relay terminals, and the relay computes 1.63 kA back.',
-      'Z = 19.0 Ω: 95% of the 20 Ω line, past Zone 1’s 80% reach (16 Ω). 21-BA trips Zone 1 at its end; 21-AB waits for Zone 2 and trips at 317 ms.',
+      { text: 'Fault at 95% of A–B: 1.63 kA on the line, 6.8 A at the relay terminals, and the relay computes 1.63 kA back.', show: ['bay.relayview'], at: 0 },
+      { text: 'Z = 19.0 Ω: 95% of the 20 Ω line, past Zone 1’s 80% reach (16 Ω). 21-BA trips Zone 1 at its end; 21-AB waits for Zone 2 and trips at 317 ms.', show: ['bay.relayview', 'bay.events'], at: 'end' },
     ],
     tryIt: [
-      'In the CT card, set the ratio to 1500:5 (the CT is still 1200:5). The relay multiplies by 300 instead of 240 and computes 2.03 kA for the same 1.63 kA. Z reads 15.2 Ω and Zone 1 trips at 17 ms. Faster here, but Zone 1 now reaches 100% of the line instead of 80%: no safety margin left.',
-      'Set it to 2000:5 and move the fault to line B–Y at 10%, outside this line. The relay computes 12.7 Ω instead of 21.2 Ω and trips Zone 1 for a fault on the next line: a miscoordination from one wrong number in a settings file.',
+      { text: 'In the CT card, set the ratio to 1500:5 (the CT is still 1200:5). The relay multiplies by 300 instead of 240 and computes 2.03 kA for the same 1.63 kA. Z reads 15.2 Ω and Zone 1 trips at 17 ms. Faster here, but Zone 1 now reaches 100% of the line instead of 80%: no safety margin left.', show: ['bay.chain.ct', 'bay.controls'] },
+      { text: 'Set it to 2000:5 and move the fault to line B–Y at 10%, outside this line. The relay computes 12.7 Ω instead of 21.2 Ω and trips Zone 1 for a fault on the next line: a miscoordination from one wrong number in a settings file.', show: ['bay.chain.ct', 'bay.fault'] },
     ],
     takeaway: 'The relay’s current is the secondary current times its ratio setting. A ratio error scales every impedance the relay measures, so it moves every zone reach. That is why CT ratios are verified at commissioning and checked against the settings.',
   },
@@ -97,14 +97,14 @@ export const LESSONS = [
     expect: { verdict: 'backup', measured: { rid: 'AB', zOhm: 2, dir: -1 } },
     intro: 'A CT’s polarity marks (the two dots on the drawing) define which way is “into the line”: current entering the marked primary side, here the bus side, leaves the marked secondary lead, and the relay calls that forward. Swap the secondary leads and the relay gets exactly the right amount of current, pointing the wrong way. Here the CT itself is fine, but its leads are swapped at the terminal block in front of 21-AB, a classic commissioning miss.',
     watch: [
-      'Step to the fault, 10% from A. On the line, 2.49 kA flows from bus A into the line. At the relay terminals the current is turned around (180° from the line current), and the relay computes the fault as reverse.',
-      'Magnitudes, voltage and |Z| = 2.0 Ω are all correct; only the direction is wrong, and that is enough. 21-AB believes the fault is behind it and stays quiet.',
-      'Station A’s end is cleared by remote backup: 21-XA’s Zone 2 at 317 ms, so line X–A goes out too. Cleared at 367 ms.',
+      { text: 'Step to the fault, 10% from A. On the line, 2.49 kA flows from bus A into the line. At the relay terminals the current is turned around (180° from the line current), and the relay computes the fault as reverse.', show: ['bay.drawing', 'bay.relayview'], at: 0 },
+      { text: 'Magnitudes, voltage and |Z| = 2.0 Ω are all correct; only the direction is wrong, and that is enough. 21-AB believes the fault is behind it and stays quiet.', show: ['bay.relayview'], at: 0 },
+      { text: 'Station A’s end is cleared by remote backup: 21-XA’s Zone 2 at 317 ms, so line X–A goes out too. Cleared at 367 ms.', show: ['bay.events'], at: 'end' },
     ],
     tryIt: [
-      'Set the polarity to Reversed (phase A): only one phase swapped. The relay now sees residual current (3I0 = 4.98 kA) that isn’t on the line, picks a ground loop (AG) for a three-phase fault, and measures 0.86 Ω instead of 2.0 Ω, still reverse.',
-      'Back to Reversed (all), move the fault behind the relay to line X–A at 90%. Now 21-AB sees a fault behind it as forward and trips Zone 1 at 17 ms for a fault that isn’t on its line: a miscoordination.',
-      'Set the polarity to Correct and replay the fault at 10%: 21-AB trips Zone 1 at 17 ms and line X–A stays in service.',
+      { text: 'Set the polarity to Reversed (phase A): only one phase swapped. The relay now sees residual current (3I0 = 4.98 kA) that isn’t on the line, picks a ground loop (AG) for a three-phase fault, and measures 0.86 Ω instead of 2.0 Ω, still reverse.', show: ['bay.chain.ct'] },
+      { text: 'Back to Reversed (all), move the fault behind the relay to line X–A at 90%. Now 21-AB sees a fault behind it as forward and trips Zone 1 at 17 ms for a fault that isn’t on its line: a miscoordination.', show: ['bay.chain.ct', 'bay.fault'] },
+      { text: 'Set the polarity to Correct and replay the fault at 10%: 21-AB trips Zone 1 at 17 ms and line X–A stays in service.', show: ['bay.chain.ct', 'bay.fault'] },
     ],
     takeaway: 'Direction is not a separate input: the relay derives it from the angle of the current against the voltage. Reverse the polarity and the relay fails both ways: it won’t trip for faults on its line, and it trips for faults behind it. Polarity checks with load current at commissioning catch this before a fault does.',
   },
@@ -118,14 +118,14 @@ export const LESSONS = [
     expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 10, dir: 1 } },
     intro: 'The relay never sees a smooth wave either. Its inputs are sampled (here 16 times a cycle; real relays sample faster) and turned into numbers, and the protection works on phasors, magnitude and angle, estimated from the last cycle of samples. When the fault starts, that estimate needs time to catch up. The Oscillography panel on this tab is the relay’s event report.',
     watch: [
-      'In Oscillography choose Fault inception and step through. At 0 ms the line current jumps to 1.99 kA and the voltage at A collapses to 19.9 kV. The current carries a DC offset that dies away in a few cycles (τ ≈ 10 ms, from the line’s X/R).',
-      'On CT secondary, the dots are the relay’s samples. The black line is the magnitude the relay estimates from its last cycle of samples (the shaded window): it climbs in 16 steps as fault samples replace pre-fault ones, and reaches the true magnitude (dashed) after one cycle, 16.7 ms. The offset makes it wobble a little on the way; VT secondary shows the same for the voltage, falling.',
-      'Zone 1 picks up at 17 ms, once the estimate has settled: the model’s 1-cycle relay time stands for this filtering. 21-AB trips, and when 52-AB opens at 67 ms each phase stops at its own current zero.',
+      { text: 'In Oscillography choose Fault inception and step through. At 0 ms the line current jumps to 1.99 kA and the voltage at A collapses to 19.9 kV. The current carries a DC offset that dies away in a few cycles (τ ≈ 10 ms, from the line’s X/R).', show: ['bay.osc', 'bay.controls'], at: 0 },
+      { text: 'On CT secondary, the dots are the relay’s samples. The black line is the magnitude the relay estimates from its last cycle of samples (the shaded window): it climbs in 16 steps as fault samples replace pre-fault ones, and reaches the true magnitude (dashed) after one cycle, 16.7 ms. The offset makes it wobble a little on the way; VT secondary shows the same for the voltage, falling.', show: ['bay.osc'], at: 0.0167 },
+      { text: 'Zone 1 picks up at 17 ms, once the estimate has settled: the model’s 1-cycle relay time stands for this filtering. 21-AB trips, and when 52-AB opens at 67 ms each phase stops at its own current zero.', show: ['bay.osc', 'bay.events'], at: 'end' },
     ],
     tryIt: [
-      'Press Play at 0.05× speed: the shaded window slides along the samples and the estimate follows it. Whole event shows the full record; Around cursor follows the playback.',
-      'Pick terminal BA: the same fault from the other end, with its own samples and its own estimate.',
-      'Think of the samples as data: in a digital substation, a merging unit in the yard samples the CTs and VTs and sends these same numbers over the network as IEC 61850 sampled values. Lose the stream and the relay has nothing to estimate from.',
+      { text: 'Press Play at 0.05× speed: the shaded window slides along the samples and the estimate follows it. Whole event shows the full record; Around cursor follows the playback.', show: ['bay.osc', 'bay.controls'] },
+      { text: 'Pick terminal BA: the same fault from the other end, with its own samples and its own estimate.', show: ['bay.picker'] },
+      { text: 'Think of the samples as data: in a digital substation, a merging unit in the yard samples the CTs and VTs and sends these same numbers over the network as IEC 61850 sampled values. Lose the stream and the relay has nothing to estimate from.', show: ['bay.osc'] },
     ],
     takeaway: 'Relays work on numbers, not waves: samples, then phasor estimates. Filtering a clean phasor out of a fault waveform takes about a cycle, which is a large part of why even an “instantaneous” zone takes time. It is also the bridge to digital substations, where those samples arrive as network messages.',
   },
@@ -159,13 +159,13 @@ export const LESSONS = [
     expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 10, dir: 1 } },
     intro: 'A distance relay divides the voltage by the current at its terminals: Z = V / I. On a healthy line that is the load impedance: large. During a fault it is the line impedance between the relay and the fault: small, and in proportion to the distance. That one number is why it is called distance protection.',
     watch: [
-      'Before the fault (−50 ms) the line carries 384 A of load: the relay sees about 204 Ω (Load Z row), far outside any zone.',
-      'At the fault at 50%: 19.9 kV ÷ 1.99 kA = 10.0 Ω at 75°, exactly half the 20 Ω line. Zone 1 (80%, 16 Ω) trips at 17 ms.',
-      'The secondary column shows the same thing in relay units: 16.6 V ÷ 8.3 A = 2.0 Ω. Settings are often written in secondary ohms: this whole line is 4 Ω secondary.',
+      { text: 'Before the fault (−50 ms) the line carries 384 A of load: the relay sees about 204 Ω (Load Z row), far outside any zone.', show: ['bay.relayview'], at: -0.05 },
+      { text: 'At the fault at 50%: 19.9 kV ÷ 1.99 kA = 10.0 Ω at 75°, exactly half the 20 Ω line. Zone 1 (80%, 16 Ω) trips at 17 ms.', show: ['bay.relayview'], at: 0 },
+      { text: 'The secondary column shows the same thing in relay units: 16.6 V ÷ 8.3 A = 2.0 Ω. Settings are often written in secondary ohms: this whole line is 4 Ω secondary.', show: ['bay.relayview'], at: 0 },
     ],
     tryIt: [
-      'Move the fault to 10% and to 90%: Z reads 2.0 Ω and 18.0 Ω. The current alone hardly tells you where the fault is (2.49 kA vs 1.66 kA); the ratio V / I does.',
-      'Move the fault to line B–Y at 10%: Z = 21.2 Ω, beyond the 20 Ω line. Zone 1 doesn’t reach it; only Zone 2 (24 Ω) does, after its time delay, and B–Y’s own relays clear it first.',
+      { text: 'Move the fault to 10% and to 90%: Z reads 2.0 Ω and 18.0 Ω. The current alone hardly tells you where the fault is (2.49 kA vs 1.66 kA); the ratio V / I does.', show: ['bay.fault', 'bay.relayview'] },
+      { text: 'Move the fault to line B–Y at 10%: Z = 21.2 Ω, beyond the 20 Ω line. Zone 1 doesn’t reach it; only Zone 2 (24 Ω) does, after its time delay, and B–Y’s own relays clear it first.', show: ['bay.fault', 'bay.relayview'] },
     ],
     takeaway: 'Neither input is enough on its own: the current says something is wrong, the voltage says how close it is, and Z = V / I combines them into a distance. That is why a distance relay needs both its CTs and its VTs, and why an error in either one is a reach error.',
   },
@@ -202,13 +202,13 @@ export const LESSONS = [
     expect: { verdict: 'backup', measured: { rid: 'AB', zOhm: 2, dir: 1 } },
     intro: 'Relay decision, output contact, trip coil, breaker mechanism, current interruption: five separate steps, and the relay controls only the first two. Here 52-AB’s mechanism is stuck.',
     watch: [
-      '21-AB decides at 17 ms: Zone 1 TRIP. The trip wire to the trip coil (TC) lights up: the command was delivered.',
-      'The breaker never opens. Its 52a contact still says closed and 2.49 kA keeps flowing through the CT. The relay did its job; the fault is still there.',
-      'Remote backup clears it: 21-XA’s Zone 2 at 317 ms from station X, cleared at 367 ms, and line X–A goes out with it.',
+      { text: '21-AB decides at 17 ms: Zone 1 TRIP. The trip wire to the trip coil (TC) lights up: the command was delivered.', show: ['bay.drawing'], at: 0.017 },
+      { text: 'The breaker never opens. Its 52a contact still says closed and 2.49 kA keeps flowing through the CT. The relay did its job; the fault is still there.', show: ['bay.drawing', 'bay.relayview'], at: 0.1 },
+      { text: 'Remote backup clears it: 21-XA’s Zone 2 at 317 ms from station X, cleared at 367 ms, and line X–A goes out with it.', show: ['bay.events'], at: 'end' },
     ],
     tryIt: [
-      'In the chain, tick Opens when tripped back on and untick Trip circuit Intact instead. 21-AB still trips at 17 ms, but the dashed wire shows the command never reaches the coil. Same result, a different broken link.',
-      'Restore both and replay: 52-AB opens at 67 ms, and the 52a contact and the current agree.',
+      { text: 'In the chain, tick Opens when tripped back on and untick Trip circuit Intact instead. 21-AB still trips at 17 ms, but the dashed wire shows the command never reaches the coil. Same result, a different broken link.', show: ['bay.chain.bkr', 'bay.chain.trip', 'bay.controls'] },
+      { text: 'Restore both and replay: 52-AB opens at 67 ms, and the 52a contact and the current agree.', show: ['bay.chain.bkr', 'bay.chain.trip'] },
     ],
     takeaway: 'A trip is a request. Whether the current stops depends on the trip circuit, the DC supply, the breaker mechanism and the arc being interrupted. Breaker-failure protection (not modelled here) watches the current, not the 52a contact, because only the current proves the breaker opened.',
   },
@@ -225,11 +225,11 @@ export const LESSONS = [
     expect: { verdict: 'selective' },
     intro: 'A fault is a short circuit: very high current, an arc, and nearby generators pushed off balance until protection removes it. Line A–B has a fault 10% from A. Everything is working, and Consequences (right, under the outcome) adds up what the fault costs as it plays.',
     watch: [
-      '21-AB trips on Zone 1 at 17 ms. 21-BA trips by its pilot scheme (DCB) at 50 ms, because no “block” came from A.',
-      'The fault is cleared at 100 ms (6 cycles): inside the critical clearing time, fault duty and arc energy close to a fast clear, and only line A–B is out.',
+      { text: '21-AB trips on Zone 1 at 17 ms. 21-BA trips by its pilot scheme (DCB) at 50 ms, because no “block” came from A.', show: ['coord.timing', 'coord.events'], at: 0.06 },
+      { text: 'The fault is cleared at 100 ms (6 cycles): inside the critical clearing time, fault duty and arc energy close to a fast clear, and only line A–B is out.', show: ['coord.outcome', 'coord.consequences'], at: 'end' },
     ],
     tryIt: [
-      'Under Failures, tick “Breaker fails” for AB. 52-AB never opens, and nothing at station A can clear the fault. 21-XA at station X waits out its delayed Zone 2 and trips at 317 ms. The fault is cleared at 367 ms (22 cycles): past the critical clearing time, about 3× the fault duty and almost 4× the arc energy, and line X–A and bus A are lost as well.',
+      { text: 'Under Failures, tick “Breaker fails” for AB. 52-AB never opens, and nothing at station A can clear the fault. 21-XA at station X waits out its delayed Zone 2 and trips at 317 ms. The fault is cleared at 367 ms (22 cycles): past the critical clearing time, about 3× the fault duty and almost 4× the arc energy, and line X–A and bus A are lost as well.', show: ['coord.failures'] },
     ],
     takeaway: 'What protection delivers is time. The same fault costs little or a lot depending on how fast it is cleared and by whom: one failed link turned a 6-cycle clear of one line into a 22-cycle clear that left a whole station without supply.',
   },
@@ -245,14 +245,14 @@ export const LESSONS = [
     expect: { verdict: 'backup' },
     intro: 'A relay doesn’t trip anything on its own. It needs CTs and VTs to measure, the station battery to run on and to energize the breaker’s trip coil, and a breaker that opens. Here station A’s DC supply has failed (a battery or charger fault nobody caught) just as the same fault happens.',
     watch: [
-      'At inception the log shows “Station A DC supply lost”: 21-AX and 21-AB are dead, and 52-AX and 52-AB cannot trip.',
-      'B still trips at 50 ms. With A dead, no DCB block can arrive, so B’s scheme trips: DCB fails toward tripping.',
-      'A’s side is cleared only by 21-XA’s delayed Zone 2 from station X: cleared at 367 ms, and bus A loses supply. That is remote backup: 21-XA protects line X–A, so it is not part of line A–B’s own protection.',
+      { text: 'At inception the log shows “Station A DC supply lost”: 21-AX and 21-AB are dead, and 52-AX and 52-AB cannot trip.', show: ['coord.events', 'coord.oneline'], at: 0 },
+      { text: 'B still trips at 50 ms. With A dead, no DCB block can arrive, so B’s scheme trips: DCB fails toward tripping.', show: ['coord.timing'], at: 0.051 },
+      { text: 'A’s side is cleared only by 21-XA’s delayed Zone 2 from station X: cleared at 367 ms, and bus A loses supply. That is remote backup: 21-XA protects line X–A, so it is not part of line A–B’s own protection.', show: ['coord.outcome', 'coord.consequences'], at: 'end' },
     ],
     tryIt: [
-      'Under Failures → Station DC supply, tick A back on and replay: back to a 100 ms clear.',
-      'With A’s DC off again, drag the fault to 50%. 21-XA’s Zone 2 doesn’t reach that far and nothing else sees the fault: in this model it is never cleared. Real systems add longer-reaching backup, but the point stands: every link has to work.',
-      'Back at 10% with DC restored, break a different link in the protection chain on the Bay tab (terminal AB): untick Trip circuit Intact. 21-AB still trips at 17 ms, but the trip never reaches 52-AB, and the result is the same 367 ms remote-backup clear.',
+      { text: 'Under Failures → Station DC supply, tick A back on and replay: back to a 100 ms clear.', show: ['coord.failures'] },
+      { text: 'With A’s DC off again, drag the fault to 50%. 21-XA’s Zone 2 doesn’t reach that far and nothing else sees the fault: in this model it is never cleared. Real systems add longer-reaching backup, but the point stands: every link has to work.', show: ['coord.fault'] },
+      { text: 'Back at 10% with DC restored, break a different link in the protection chain on the Bay tab (terminal AB): untick Trip circuit Intact. 21-AB still trips at 17 ms, but the trip never reaches 52-AB, and the result is the same 367 ms remote-backup clear.', show: ['header.tabs'] },
     ],
     takeaway: 'Protection is a chain. Standards call it a Protection System (NERC Glossary): relays, communications, voltage and current sensing, station DC supply, and control circuitry through the trip coils. Everything protecting one line together is its Composite Protection System; remote backup from another line’s protection, like 21-XA here, is not part of it. A failure nobody sees is found by the next fault, which is why batteries are alarmed and trip circuits supervised.',
   },
@@ -267,12 +267,12 @@ export const LESSONS = [
     expect: { verdict: 'selective' },
     intro: 'Line A–B uses POTT: each end trips on its overreaching Zone 2 only when the other end confirms, over the teleprotection channel, that it sees the fault too. That channel is the communications path between the two stations.',
     watch: [
-      'Both ends key PERMISSIVE at 17 ms; it arrives at the far end half a cycle later (the channel delay).',
-      '21-AB trips POTT at 25 ms, and the fault is cleared at 75 ms (4.5 cycles).',
+      { text: 'Both ends key PERMISSIVE at 17 ms; it arrives at the far end half a cycle later (the channel delay).', show: ['coord.timing'], at: 0.026 },
+      { text: '21-AB trips POTT at 25 ms, and the fault is cleared at 75 ms (4.5 cycles).', show: ['coord.timing', 'coord.outcome'], at: 'end' },
     ],
     tryIt: [
-      'Under Failures → Pilot channels, set A–B to Out of service. 21-AB’s permissive never arrives, so it waits out its Zone 2 timer: trip at 317 ms, cleared at 367 ms (22 cycles), past the critical clearing time. Same fault, same relays; only the channel changed.',
-      'Put the channel back and raise the channel delay in ⚙ Settings → Individual features → Channel delay (e.g. to 3 cycles). The clear slows down by the same amount: channel latency is part of the clearing time.',
+      { text: 'Under Failures → Pilot channels, set A–B to Out of service. 21-AB’s permissive never arrives, so it waits out its Zone 2 timer: trip at 317 ms, cleared at 367 ms (22 cycles), past the critical clearing time. Same fault, same relays; only the channel changed.', show: ['coord.failures'] },
+      { text: 'Put the channel back and raise the channel delay in ⚙ Settings → Individual features → Channel delay (e.g. to 3 cycles). The clear slows down by the same amount: channel latency is part of the clearing time.', show: ['header.settings'] },
     ],
     takeaway: 'For POTT, a dead channel costs speed, not security: the line still clears, just too slowly. Channel availability and latency are protection performance, which is why channels are monitored and their delay is part of the protection design.',
   },  {
@@ -286,12 +286,12 @@ export const LESSONS = [
     expect: { verdict: 'miscoordination' },
     intro: 'Line A–B uses DCB: an end trips on its overreaching Zone 2 after a short coordination timer, unless the other end sends a block saying the fault is behind it. The timer is 2 cycles (33 ms), sized for a fast channel. Here the channel has been rerouted over a slower path: 3 cycles (50 ms) one way. Nothing is broken; it is just slower.',
     watch: [
-      'The fault is on line B–Y, outside A–B. 21-BA sees it behind it and keys a block at 17 ms.',
-      '21-AB’s timer runs out at 50 ms with no block received yet (it arrives at 67 ms), so 21-AB trips DCB and opens line A–B for a fault on the next line. A miscoordination, caused by a healthy but slower channel.',
+      { text: 'The fault is on line B–Y, outside A–B. 21-BA sees it behind it and keys a block at 17 ms.', show: ['coord.timing', 'coord.events'], at: 0.017 },
+      { text: '21-AB’s timer runs out at 50 ms with no block received yet (it arrives at 67 ms), so 21-AB trips DCB and opens line A–B for a fault on the next line. A miscoordination, caused by a healthy but slower channel.', show: ['coord.timing', 'coord.outcome'], at: 'end' },
     ],
     tryIt: [
-      'In ⚙ Settings → Individual features, set the channel delay to 0.5 cycles and replay: the block arrives at 25 ms, inside the timer, and line A–B stays in.',
-      'Back to 3 cycles, raise the DCB coordination timer to 4 cycles: the external fault is secure again. Now move the fault to line A–B at 90% and look at Consequences details. The clearing-time bar shows 67 ms of channel (the DCB timer waiting for a block): every internal fault now clears in 133 ms instead of 100 ms.',
+      { text: 'In ⚙ Settings → Individual features, set the channel delay to 0.5 cycles and replay: the block arrives at 25 ms, inside the timer, and line A–B stays in.', show: ['header.settings'] },
+      { text: 'Back to 3 cycles, raise the DCB coordination timer to 4 cycles: the external fault is secure again. Now move the fault to line A–B at 90% and look at Consequences details. The clearing-time bar shows 67 ms of channel (the DCB timer waiting for a block): every internal fault now clears in 133 ms instead of 100 ms.', show: ['header.settings', 'coord.consequences'] },
     ],
     takeaway: 'Channel latency is part of the protection design. A slower path doesn’t just add its own delay: it forces a longer timer (DCB) or a slower trip (POTT), and that cost lands on every fault. Rerouting a protection channel is a protection change and needs the protection engineer’s sign-off.',
   },
@@ -307,13 +307,13 @@ export const LESSONS = [
     expect: { verdict: 'miscoordination' },
     intro: 'Line A–B has line current differential (87L): each end sends its current samples to the other, and the zone trips if what goes in doesn’t come out. To compare the two ends, each relay must line up samples taken at the same instant. Without a time source like GPS, it measures the round-trip delay over the channel and assumes each direction takes half. Here the network has rerouted one direction of the A–B channel over a longer path: +3 ms one way, the other direction unchanged.',
     watch: [
-      'At inception the log spells it out: each end assumes half the round trip, so the remote samples are 1.5 ms out of step, which is 32° at 60 Hz.',
-      'The fault is on line X–A, outside A–B: 2.34 kA flows straight through line A–B. Lined up correctly, the two ends’ currents cancel. Rotated by 32°, they leave 0.33 pu (1.3 kA) of false differential, above the 0.3 pu pickup and the 30% slope.',
-      '87L trips both ends of line A–B at 28 ms for a fault that isn’t on it: a miscoordination. (The 3 ms also delays the data, so even this trip comes 3 ms later than usual.)',
+      { text: 'At inception the log spells it out: each end assumes half the round trip, so the remote samples are 1.5 ms out of step, which is 32° at 60 Hz.', show: ['coord.events'], at: 0 },
+      { text: 'The fault is on line X–A, outside A–B: 2.34 kA flows straight through line A–B. Lined up correctly, the two ends’ currents cancel. Rotated by 32°, they leave 0.33 pu (1.3 kA) of false differential, above the 0.3 pu pickup and the 30% slope.', show: ['coord.oneline'], at: 0 },
+      { text: '87L trips both ends of line A–B at 28 ms for a fault that isn’t on it: a miscoordination. (The 3 ms also delays the data, so even this trip comes 3 ms later than usual.)', show: ['coord.timing', 'coord.outcome'], at: 'end' },
     ],
     tryIt: [
-      'Under Failures → 87L channel A–B, choose Path switched: +1 ms one way: 0.5 ms out of step, 11°, about 19% false differential, and 87L restrains.',
-      'Back to +3 ms and move the fault onto line A–B at 50%: a real internal fault still trips. Asymmetry hurts when current flows through the line, not when it flows in from both ends.',
+      { text: 'Under Failures → 87L channel A–B, choose Path switched: +1 ms one way: 0.5 ms out of step, 11°, about 19% false differential, and 87L restrains.', show: ['coord.failures'] },
+      { text: 'Back to +3 ms and move the fault onto line A–B at 50%: a real internal fault still trips. Asymmetry hurts when current flows through the line, not when it flows in from both ends.', show: ['coord.fault'] },
     ],
     takeaway: 'For 87L the channel is not just in the trip path, it is in the measurement. A path that is fine for data can be wrong for differential protection if the two directions differ. Utilities control this by pinning protection channels to fixed paths, alarming on a change in channel delay, or aligning samples with GPS time instead of the channel; the separate IEC 61850 simulator covers time synchronization in detail.',
   },
@@ -329,13 +329,13 @@ export const LESSONS = [
     expect: { verdict: 'selective' },
     intro: 'A fault in the middle of the line sits inside Zone 1 of both relays. Zone 1 has no intentional delay, so both ends trip as soon as the relay measures the fault.',
     watch: [
-      'Both relays pick up Z1 at 1 cycle (relay operate time) and trip immediately.',
-      'Both breakers open 3 cycles later — the fault is cleared in about 4 cycles (67 ms).',
-      'On the coverage lanes, the red fault line falls inside both blue Z1 bars.',
+      { text: 'Both relays pick up Z1 at 1 cycle (relay operate time) and trip immediately.', show: ['coord.timing', 'coord.controls'], at: 0.017 },
+      { text: 'Both breakers open 3 cycles later — the fault is cleared in about 4 cycles (67 ms).', show: ['coord.timing', 'coord.outcome'], at: 'end' },
+      { text: 'On the coverage lanes, the red fault line falls inside both blue Z1 bars.', show: ['coord.oneline'], at: 0 },
     ],
     tryIt: [
-      'Drag the fault slider to 85%. Relay A’s Z1 (80%) no longer reaches — which end is now slow, and by how much?',
-      'Drag it to 15% and see the same thing happen at the other end.',
+      { text: 'Drag the fault slider to 85%. Relay A’s Z1 (80%) no longer reaches — which end is now slow, and by how much?', show: ['coord.fault'] },
+      { text: 'Drag it to 15% and see the same thing happen at the other end.', show: ['coord.fault'] },
     ],
     takeaway: 'Zone 1 is the fast zone, but it deliberately covers only part of the line. Faults near either end are tripped instantly by one relay and slowly by the other.',
   },
@@ -404,13 +404,13 @@ export const LESSONS = [
     expect: { verdict: 'selective' },
     intro: 'Relay A’s Zone 2 reaches into the next line (B–Y). For a fault there it picks up too — and must wait long enough for the B–Y relays to clear their own fault first.',
     watch: [
-      '21-AB Z2 picks up at 17 ms and starts its 18-cycle timer.',
-      '21-BY trips on Z1; 52-BY opens at 67 ms, and 21-AB’s Z2 resets with 250 ms to spare.',
-      'The far end (21-YB) clears its side on Z2 — sequential clearing on line B–Y.',
+      { text: '21-AB Z2 picks up at 17 ms and starts its 18-cycle timer.', show: ['coord.timing'], at: 0.017 },
+      { text: '21-BY trips on Z1; 52-BY opens at 67 ms, and 21-AB’s Z2 resets with 250 ms to spare.', show: ['coord.events', 'coord.timing'], at: 0.067 },
+      { text: 'The far end (21-YB) clears its side on Z2 — sequential clearing on line B–Y.', show: ['coord.timing', 'coord.oneline'], at: 'end' },
     ],
     tryIt: [
-      'Drop 21-AB’s Z2 delay to 2 cycles. Now it times out before 52-BY opens — line A–B trips for a fault that isn’t on it.',
-      'Set it to 12 cycles: it works, but the outcome warns the margin is less than the CTI.',
+      { text: 'Drop 21-AB’s Z2 delay to 2 cycles. Now it times out before 52-BY opens — line A–B trips for a fault that isn’t on it.', show: ['coord.reach'] },
+      { text: 'Set it to 12 cycles: it works, but the outcome warns the margin is less than the CTI.', show: ['coord.reach', 'coord.outcome'] },
     ],
     takeaway: 'Overlapping zones are fine as long as the slower one waits at least one coordination interval (CTI) longer than the faster one needs to clear.',
   },
@@ -425,13 +425,13 @@ export const LESSONS = [
     expect: { verdict: 'backup' },
     intro: '21-BY detects the fault and trips — but breaker 52-BY is stuck. Nothing at Station B removes the fault, so the remote relay at A has to.',
     watch: [
-      '52-BY FAILS: the fault is still fed through Bus B.',
-      '21-AB’s Z2 keeps timing (it never sees the current drop) and trips at about 317 ms.',
-      'The outcome is “Cleared by backup” — but all of line A–B is now out too.',
+      { text: '52-BY FAILS: the fault is still fed through Bus B.', show: ['coord.events'], at: 0.067 },
+      { text: '21-AB’s Z2 keeps timing (it never sees the current drop) and trips at about 317 ms.', show: ['coord.timing'], at: 0.317 },
+      { text: 'The outcome is “Cleared by backup” — but all of line A–B is now out too.', show: ['coord.outcome'], at: 'end' },
     ],
     tryIt: [
-      'Under Failures, clear the stuck breaker and compare the outage.',
-      'Disable 21-AB’s Z2 with the breaker still stuck — now nothing clears the fault from the A side.',
+      { text: 'Under Failures, clear the stuck breaker and compare the outage.', show: ['coord.failures'] },
+      { text: 'Disable 21-AB’s Z2 with the breaker still stuck — now nothing clears the fault from the A side.', show: ['coord.settings'] },
     ],
     takeaway: 'Zone 2 doubles as remote backup for the next station. It works, but it’s slow and takes out more of the system than necessary.',
   },
@@ -968,4 +968,22 @@ export function lessonNeighbours(id, audience = 'learning') {
   if (k >= 0) return { prev: byId(path[k - 1]), next: byId(path[k + 1]) }
   const i = LESSONS.findIndex(l => l.id === id)
   return { prev: LESSONS[i - 1] ?? null, next: LESSONS[i + 1] ?? null }
+}
+
+// ── Bullets that point at the screen ──
+// A Watch for / Try this item is a string, or { text, show: [target ids], at }
+// where `show` names the panels it is about (lib/explain.js) and `at` moves the
+// playback first (seconds, or 'end'). Its show button spotlights them; Show me
+// runs every such bullet in order.
+export const bulletText = b => (typeof b === 'string' ? b : b.text)
+export function lessonSteps(lesson) {
+  const steps = []
+  for (const [list, title, kind] of [[lesson.watch, 'Watch for', 'watch'], [lesson.tryIt, 'Try this', 'try']]) {
+    list.forEach((b, i) => {
+      if (typeof b !== 'string' && b.show?.length) {
+        steps.push({ key: `${kind}-${i}`, ids: b.show, text: b.text, title, action: b.at !== undefined ? { time: b.at } : undefined })
+      }
+    })
+  }
+  return steps
 }

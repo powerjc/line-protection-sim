@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useCoordination, DEFAULT_SPEC } from './hooks/useCoordination'
 import { coordinationConfig, defaultConfig } from './lib/schema'
-import { LESSONS, lessonNeighbours } from './lib/lessons'
+import { LESSONS, lessonNeighbours, bulletText } from './lib/lessons'
 import { LessonMenu, LessonCard, loadSeen, saveSeen } from './components/Lessons'
 import { WelcomeCard } from './components/Welcome'
 import { configForLevel, levelFeatures, loadLevelPref, saveLevelPref, loadAudiencePref, saveAudiencePref, loadWelcomed, saveWelcomed, loadConsequencesPref, saveConsequencesPref } from './lib/levels'
@@ -13,6 +13,7 @@ import FaultResults from './components/FaultResults'
 import DifferentialView from './components/DifferentialView'
 import SettingsPanel from './components/SettingsPanel'
 import StatusChips from './components/StatusChips'
+import { TourProvider, HelpMenu, Target } from './components/Tour'
 import CoordinationView from './components/CoordinationView'
 import BayView from './components/BayView'
 import StationView from './components/StationView'
@@ -88,7 +89,10 @@ export default function App() {
   const [seen, setSeen] = useState(loadSeen)
   const lesson = LESSONS.find(l => l.id === lessonId)
 
-  function startLesson(l) {
+  // walk: arrived from the previous lesson's walkthrough → walk this one too
+  const [walkOnOpen, setWalkOnOpen] = useState(null)
+  function startLesson(l, walk = false) {
+    setWalkOnOpen(walk ? l.id : null)
     const cfg = defaultConfig()
     l.setup?.(cfg)
     loadConfig(cfg)
@@ -118,6 +122,10 @@ export default function App() {
 
   return (
     <UnitsContext.Provider value={{ unit: timeUnit, freqHz: config.timing.freqHz }}>
+    <TourProvider ctx={{ config: ['coord', 'station', 'bay'].includes(tab) ? coordConfig : config }} onEnableFeature={f => updateFeature(f, true)}
+      onAction={a => { if (a.time !== undefined) coord.setTime(a.time === 'end' ? coord.endT : a.time) }}
+      playback={['coord', 'station', 'bay'].includes(tab) ? { time: coord.time, playing: coord.playing, freqHz: config.timing.freqHz,
+        rewind: coord.rewind, stepBack: coord.stepBack, stepForward: coord.stepForward, togglePlay: coord.togglePlay } : null}>
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -125,7 +133,7 @@ export default function App() {
           <h1 className="text-lg font-bold text-gray-900">Line Protection Simulator</h1>
           <p className="text-xs text-gray-500 hidden sm:block">Distance &amp; differential protection training</p>
         </div>
-        <nav className="order-last sm:order-none w-full sm:w-auto flex gap-1 bg-gray-100 rounded-lg p-1">
+        <Target as="nav" id="header.tabs" className="order-last sm:order-none w-full sm:w-auto flex gap-1 bg-gray-100 rounded-lg p-1">
           {TABS.filter(t => !t.feature || config.features?.[t.feature]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`flex-1 sm:flex-none px-3 py-1 text-sm font-semibold rounded-md transition
@@ -133,16 +141,21 @@ export default function App() {
               {t.label}
             </button>
           ))}
-        </nav>
+        </Target>
         <div className="flex items-center gap-2">
+        <Target id="header.lessons">
         <LessonMenu activeId={lessonId} seen={seen} onStart={startLesson}
           onWelcome={() => { setLessonId(null); setTab('coord'); setWelcome(true) }} />
+        </Target>
+        <HelpMenu />
+        <Target id="header.settings">
         <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} config={config} onLevel={changeLevel} onUpdateTap={updateTap} onUpdate={updateTopLevel} onUpdateTiming={updateTiming} onReset={resetConfig}
           onUpdateFeature={updateFeature} onUpdatePilot={updatePilot} onUpdateSir={updateSir} onUpdateBus={updateBus} onUpdateInfeed={updateInfeed}
           timeUnit={timeUnit} onTimeUnit={changeTimeUnit} />
+        </Target>
         </div>
       </header>
-      <StatusChips config={config} onOpenSettings={() => setSettingsOpen(true)} />
+      <Target id="header.chips"><StatusChips config={config} onOpenSettings={() => setSettingsOpen(true)} /></Target>
 
 
       {!lesson && welcome && tab === 'coord' && (
@@ -150,7 +163,8 @@ export default function App() {
       )}
 
       {lesson && (
-        <LessonCard key={lesson.id} lesson={lesson} onRestart={() => startLesson(lesson)}
+        <LessonCard key={lesson.id} lesson={lesson} onRestart={() => startLesson(lesson)} autoWalk={walkOnOpen === lesson.id}
+          onNextWalk={nav.next ? () => startLesson(nav.next, true) : undefined}
           prev={nav.prev} next={nav.next} onPrev={() => startLesson(nav.prev)} onNext={() => startLesson(nav.next)} onClose={() => setLessonId(null)} />
       )}
 
@@ -163,13 +177,13 @@ export default function App() {
         <BayView config={coordConfig} coord={coord} rid={bayRid} onRid={setBayRid} />
       ) : tab === 'coord' ? (
         <CoordinationView config={coordConfig} coord={coord} consOpen={consOpen} onConsOpen={setConsOpen} onUpdateFeature={updateFeature}
-          failuresHint={lesson?.tab === 'coord' && lesson.tryIt.some(t => t.includes('Failures')) ? lesson.id : null}
+          failuresHint={lesson?.tab === 'coord' && lesson.tryIt.some(t => bulletText(t).includes('Failures')) ? lesson.id : null}
           onUpdateZone={updateZone} onUpdateLineLength={updateLineLength} onUpdateLine={updateLine} onUpdateRelay={updateRelay} onUpdateScheme={updateScheme} />
       ) : (
         <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 min-h-0">
 
           {/* Left: relay controls */}
-          <aside className="lg:w-64 flex flex-col gap-6 bg-white rounded-xl border border-gray-200 p-4 shrink-0">
+          <Target as="aside" id="study.relays" className="lg:w-64 flex flex-col gap-6 bg-white rounded-xl border border-gray-200 p-4 shrink-0">
             <RelayPanel relayId="AB" zones={activeZones(config.relays.AB, config)} onUpdate={updateZone} title="Relay A (21-AB)" k0={k0Props(config, 'AB', updateRelay)} shape={shapeProps(config, 'AB', updateRelay)} />
             <hr className="border-gray-100" />
             <RelayPanel relayId="BA" zones={activeZones(config.relays.BA, config)} onUpdate={updateZone} title="Relay B (21-BA)" k0={k0Props(config, 'BA', updateRelay)} shape={shapeProps(config, 'BA', updateRelay)} />
@@ -182,15 +196,15 @@ export default function App() {
                 </label>
               </>
             )}
-          </aside>
+          </Target>
 
           {/* Center: R-X plane */}
-          <main className="flex-1 bg-white rounded-xl border border-gray-200 p-4 min-w-0">
+          <Target as="main" id="study.rx" className="flex-1 bg-white rounded-xl border border-gray-200 p-4 min-w-0">
             <ImpedancePlane config={config} selectedResult={selectedResult} />
-          </main>
+          </Target>
 
           {/* Right: results table */}
-          <section className="lg:w-80 bg-white rounded-xl border border-gray-200 overflow-hidden shrink-0">
+          <Target as="section" id="study.results" className="lg:w-80 bg-white rounded-xl border border-gray-200 overflow-hidden shrink-0">
             <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-sm font-semibold text-gray-700">Fault Results</h2>
               <p className="text-xs text-gray-400">Click a row to highlight on the R-X plane</p>
@@ -207,10 +221,11 @@ export default function App() {
               selectedFaultId={selectedFaultId}
               onSelectFault={setSelectedFaultId}
             />
-          </section>
+          </Target>
         </div>
       )}
     </div>
+    </TourProvider>
     </UnitsContext.Provider>
   )
 }

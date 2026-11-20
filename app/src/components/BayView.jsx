@@ -5,6 +5,7 @@ import RelayView from './RelayView'
 import Oscillography from './Oscillography'
 import ChainView from './ChainView'
 import SimControls from './SimControls'
+import { Target } from './Tour'
 import EventLog, { OutcomeCard } from './EventLog'
 import { FaultPicker, FaultSpecPicker } from './ScenarioPanel'
 
@@ -26,7 +27,7 @@ export default function BayView({ config, coord, rid: ridRaw, onRid }) {
     <div className="flex flex-col gap-4 p-4">
       <div className="flex flex-col lg:flex-row gap-4 min-h-0">
         <aside className="lg:w-64 flex flex-col gap-5 bg-white rounded-xl border border-gray-200 p-4 shrink-0">
-          <div>
+          <Target id="bay.picker" className="rounded-lg">
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Terminal</div>
             <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Terminal">
               {relayIds.map(id => (
@@ -37,13 +38,15 @@ export default function BayView({ config, coord, rid: ridRaw, onRid }) {
                 </button>
               ))}
             </div>
-          </div>
-          <FaultPicker net={sim.net} faultLoc={coord.faultLoc} onChange={coord.setFaultLoc} tap={activeTap(sim.net, config)} allowNone />
-          <FaultSpecPicker config={config} spec={coord.spec} onChange={coord.setSpec} />
+          </Target>
+          <Target id="bay.fault" className="flex flex-col gap-5 rounded-lg">
+            <FaultPicker net={sim.net} faultLoc={coord.faultLoc} onChange={coord.setFaultLoc} tap={activeTap(sim.net, config)} allowNone />
+            <FaultSpecPicker config={config} spec={coord.spec} onChange={coord.setSpec} />
+          </Target>
           <p className="text-xs text-gray-400">Same fault and playback as the Coordination tab. Break a link in the chain below (or click a device on the drawing) and replay.</p>
         </aside>
 
-        <main className="flex-1 bg-white rounded-xl border border-gray-200 p-4 min-w-0 flex flex-col gap-3">
+        <Target as="main" id="bay.drawing" className="flex-1 bg-white rounded-xl border border-gray-200 p-4 min-w-0 flex flex-col gap-3">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold text-gray-700">Bay one-line — 52-{rid}</h2>
             <span className="text-xs text-gray-400 hidden md:inline">
@@ -55,10 +58,10 @@ export default function BayView({ config, coord, rid: ridRaw, onRid }) {
               <BayDiagram config={config} sim={sim} state={state} scenario={coord.scenario} faultLoc={coord.faultLoc} rid={rid} />
             </div>
           </div>
-          <SimControls coord={coord} freqHz={config.timing.freqHz} />
-        </main>
+          <Target id="bay.controls" className="rounded-lg"><SimControls coord={coord} freqHz={config.timing.freqHz} /></Target>
+        </Target>
 
-        <section className="lg:w-96 bg-white rounded-xl border border-gray-200 overflow-hidden shrink-0 flex flex-col">
+        <Target as="section" id="bay.events" className="lg:w-96 bg-white rounded-xl border border-gray-200 overflow-hidden shrink-0 flex flex-col">
           <div className="px-4 py-3 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-700">Events at this terminal</h2>
             <p className="text-xs text-gray-400">21-{rid}{remote ? ` and its remote end 21-${remote}` : ''}; click an event to jump to it</p>
@@ -67,12 +70,12 @@ export default function BayView({ config, coord, rid: ridRaw, onRid }) {
           <div data-scroll-box className="relative overflow-y-auto max-h-[24rem]">
             <EventLog events={mine.map(([e]) => e)} eventIdx={myIdx} onSelect={coord.setTime} />
           </div>
-        </section>
+        </Target>
       </div>
 
-      <RelayView config={config} state={state} scenario={coord.scenario} rid={rid} />
-      <Oscillography config={config} sim={sim} state={state} scenario={coord.scenario} rid={rid} time={coord.time} onSetTime={coord.setTime} />
-      <ChainView config={config} sim={sim} state={state} coord={coord} rid={rid} onRid={onRid} title={`Protection chain — 52-${rid}`} />
+      <Target id="bay.relayview" className="rounded-xl"><RelayView config={config} state={state} scenario={coord.scenario} rid={rid} /></Target>
+      <Target id="bay.osc" className="rounded-xl"><Oscillography config={config} sim={sim} state={state} scenario={coord.scenario} rid={rid} time={coord.time} onSetTime={coord.setTime} /></Target>
+      <Target id="bay.chain" className="rounded-xl"><ChainView config={config} sim={sim} state={state} coord={coord} rid={rid} onRid={onRid} title={`Protection chain — 52-${rid}`} /></Target>
     </div>
   )
 }

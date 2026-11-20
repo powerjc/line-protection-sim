@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FAULTS } from '../lib/faults'
 import { runDifferential } from '../lib/differential'
+import { Target } from './Tour'
 import { FaultSpecPicker } from './ScenarioPanel'
 
 // Differential tab (87L on line A–B): settings, the Iop–Ires operating
@@ -74,7 +75,7 @@ export default function DifferentialView({ config, spec, onSpec, onUpdateDiff })
   const row = rows.find(r => r.fault.id === selected) ?? rows[0]
   return (
     <div className="flex flex-col lg:flex-row gap-4 p-4">
-      <aside className="lg:w-64 shrink-0 bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-4">
+      <Target as="aside" id="diff.settings" className="lg:w-64 shrink-0 bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-4">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">87L settings · line A–B</h3>
         <Setting label="Pickup" value={s.pickupPu} min={0.05} max={1.5} step={0.05} unit=" pu"
           title="Minimum operate current" onChange={v => onUpdateDiff('pickupPu', v)} />
@@ -88,9 +89,9 @@ export default function DifferentialView({ config, spec, onSpec, onUpdateDiff })
           title="B's CT under-reports (e.g. saturation on a through fault)" onChange={v => onUpdateDiff('ctErrorPct', v)} />
         <FaultSpecPicker config={config} spec={spec} onChange={onSpec} />
         <p className="text-xs text-gray-400">Same network and fault type / Rf as the Fault Study. Currents are both measured into the line, so an external fault sums to ≈ 0.</p>
-      </aside>
+      </Target>
 
-      <main className="flex-1 min-w-0 bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2">
+      <Target as="main" id="diff.chart" className="flex-1 min-w-0 bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-gray-700">Operating characteristic</h2>
         <div className="mx-auto w-full" style={{ maxWidth: 'min(560px, max(320px, calc(100vh - 14rem)))' }}>
           <Characteristic rows={rows} s={s} selected={selected} onSelect={setSelected} />
@@ -99,9 +100,9 @@ export default function DifferentialView({ config, spec, onSpec, onUpdateDiff })
           {row.fault.label} — {row.fault.description}: phase {row.worst.phase}, Iop {row.worst.Iop.toFixed(2)} pu,
           Ires {row.worst.Ires.toFixed(2)} pu → <b>{row.operate ? 'OPERATE' : 'restrain'}</b>
         </p>
-      </main>
+      </Target>
 
-      <section className="lg:w-80 shrink-0 bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <Target as="section" id="diff.results" className="lg:w-80 shrink-0 bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
           <h2 className="text-sm font-semibold text-gray-700">87L results</h2>
           <p className="text-xs text-gray-400">Click a row to highlight it on the chart</p>
@@ -126,7 +127,7 @@ export default function DifferentialView({ config, spec, onSpec, onUpdateDiff })
             })}
           </tbody>
         </table>
-      </section>
+      </Target>
     </div>
   )
 }
