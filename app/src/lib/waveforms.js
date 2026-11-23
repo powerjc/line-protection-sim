@@ -9,11 +9,17 @@
 // stops (its breaker opened): each pole carries on until its own next current
 // zero, as a real breaker interrupts.
 //
-// The relay's view is then sampled (SAMPLES_PER_CYCLE) and a one-cycle
-// (full-cycle) DFT estimates each phasor, as a numerical relay does. That
-// estimate needs a full cycle of post-fault samples to settle.
+// The fault starts at a phase-A voltage zero (ctsat.INCEPTION), the worst case
+// for DC offset, so phase A carries the full offset.
+//
+// The relay's view is then sampled (SAMPLES_PER_CYCLE), a mimic filter removes
+// the decaying DC, and a one-cycle (full-cycle) DFT estimates each phasor, as a
+// numerical relay does. That estimate needs a full cycle of post-fault samples
+// to settle. A CT that can saturate (lib/ctsat.js) has its secondary from the
+// core model instead of the phasor.
 
-import { bayQuantities, relayInstruments, instrumentFaults } from './instruments'
+import { bayQuantities, relayInstruments, instrumentFaults, withGains, ctSatK, baseAmps, BAY_BASE } from './instruments'
+import { INCEPTION, saturatedWave, centeredFlux, primaryFn, relayPhasor } from './ctsat'
 import { busZone, busDiffElement } from './busdiff'
 
 export const SAMPLES_PER_CYCLE = 16 // shown sparse for clarity; real relays sample faster
@@ -55,10 +61,17 @@ export function buildTrace(sim, config, rid, scenario) {
       trace.offset[view] = [0, 1, 2].map(p => steady(segs[fi - 1].q.I[p][view], w, tFault) - steady(segs[fi].q.I[p][view], w, tFault))
     }
   }
+  // A CT that can saturate (lib/ctsat.js): its secondary is the core model run
+  // on the primary wave (DC offset and all), not a phasor
+  const K = ctSatK(scenario?.ctSat?.[rid])
+  if (K && !sim.noFault) {
+    trace.sat = [0, 1, 2].map(p => saturatedWave(t => valueAt(trace, 'I', 'prim', p, t), K, f, trace.start, trace.end,
+      centeredFlux(segs[0].q.I[p].prim, w, trace.start)))
+  }
   return trace
 }
 
-const steady = (X, w, t) => Math.SQRT2 * (X.re * Math.cos(w * t) - X.im * Math.sin(w * t))
+const steady = (X, w, t) => Math.SQRT2 * (X.re * Math.cos(w * t + INCEPTION) - X.im * Math.sin(w * t + INCEPTION))
 
 export function segAt(trace, t) {
   const { segs } = trace
@@ -73,6 +86,10 @@ export function segAt(trace, t) {
 
 // Instantaneous value (A or V) of one phase in one view
 export function valueAt(trace, qty, view, p, t) {
+  if (trace.sat && qty === 'I' && view !== 'prim') {
+    const ri = trace.ri
+    return trace.sat[p](t) * ri.ctSign[p] * (view === 'sec' ? 1 / BAY_BASE.ctRatio : ri.ct)
+  }
   const s = segAt(trace, t)
   const X = s.q[qty][p][view]
   if (qty === 'I' && Math.hypot(X.re, X.im) <= 1e-6 && t > s.t0) {
@@ -101,25 +118,23 @@ export function sampleTimes(trace, t0, t1) {
   return out
 }
 
-// Full-cycle DFT estimate (RMS magnitude) at time t from the last cycle of samples
+// The relay's estimate (RMS magnitude) at time t from the last cycle of
+// samples: mimic (DC-removal) filter, then a full-cycle DFT (ctsat.relayPhasor)
 export function dftAt(trace, qty, view, p, t) {
   const N = SAMPLES_PER_CYCLE
   const dt = 1 / (trace.f * N)
   const kEnd = Math.floor(t / dt + 1e-9)
-  let re = 0, im = 0
-  for (let n = 0; n < N; n++) {
-    const k = kEnd - (N - 1) + n
-    const x = valueAt(trace, qty, view, p, k * dt)
-    const ang = (2 * Math.PI * k) / N
-    re += x * Math.cos(ang)
-    im -= x * Math.sin(ang)
-  }
-  // Peak = 2/N·|Σ|, RMS = peak/√2
-  return (Math.SQRT2 / N) * Math.hypot(re, im)
+  const X = relayPhasor(k => valueAt(trace, qty, view, p, k * dt), kEnd, trace.f, trace.tau, N)
+  return Math.hypot(X.re, X.im) / Math.SQRT2
 }
 
 // RMS of the steady-state phasor (the value the engine's phasor solver uses)
 export function phasorRms(trace, qty, view, p, t) {
+  // A saturating CT: the true value is what a perfect CT would deliver
+  if (trace.sat && qty === 'I' && view !== 'prim') {
+    const P = segAt(trace, t).q.I[p].prim
+    return Math.hypot(P.re, P.im) * (view === 'sec' ? 1 / BAY_BASE.ctRatio : trace.ri.ct)
+  }
   const X = segAt(trace, t).q[qty][p][view]
   return Math.hypot(X.re, X.im)
 }
@@ -139,14 +154,33 @@ export function stationTrace(sim, config, scenario, bus) {
   for (const e of sim.events) {
     if (!e.state.meas) continue
     const into = feeders.map(rid => (e.state.meas[rid]?.prim?.Iabc ?? []).map(I => ({ re: -I.re, im: -I.im })))
-    const el = zone ? busDiffElement(e.state.meas, zone, sim.noFault && e.t < 0 ? {} : inst, s) : null
+    const el = zone ? busDiffElement(e.state.meas, zone, withGains(sim.noFault && e.t < 0 ? {} : inst, e.state), s) : null
     const worst = el ? el.phases.reduce((w, p) => (p.Iop > w.Iop ? p : w)) : null
     const seg = { t0: e.t, into, el, Iop: worst?.Iop ?? 0, Ires: worst?.Ires ?? 0, state: e.state }
     const last = segs[segs.length - 1]
     if (last && Math.abs(last.t0 - e.t) < 1e-12) segs[segs.length - 1] = seg
     else segs.push(seg)
   }
-  return { bus, zone, feeders, segs, pickup: s.pickupPu ?? 0.2, slope: (s.slopePct ?? 50) / 100 }
+  // Each 87B CT's secondary, phase A, as the relay is told it (A): the primary
+  // into the bus with its DC offset, through the CT's polarity and ratio, and
+  // its core where it can saturate
+  let ctWave = null
+  if (zone) {
+    const f = config.timing.freqHz, w = 2 * Math.PI * f
+    const tau = Math.tan((config.lineAngleDeg * Math.PI) / 180) / w
+    const tFault = sim.events.find(e => e.kind === 'fault')?.t ?? 0
+    const Ib = baseAmps()
+    ctWave = zone.feeders.map(rid => {
+      const j = feeders.indexOf(rid)
+      const prim = primaryFn(segs.map(sg => ({ t0: sg.t0, I: sg.into[j] })), 0, { w, tau, tFault: sim.noFault ? NaN : tFault })
+      const primA = t => prim(t) * Ib
+      const ri = relayInstruments(inst, `bus:${rid}`)
+      const K = ctSatK(inst.ctSat?.[`bus:${rid}`])
+      const sec = K && !sim.noFault ? saturatedWave(primA, K, f, sim.startT, segs[segs.length - 1].t0 + 30 / f, centeredFlux(segs[0].into[j][0], w, sim.startT) * Ib) : primA
+      return t => (sec(t) * ri.ctSign[0] * ri.ct) / BAY_BASE.ctRatio
+    })
+  }
+  return { bus, zone, feeders, segs, ctWave, pickup: s.pickupPu ?? 0.2, slope: (s.slopePct ?? 50) / 100 }
 }
 
 // The bus differential's station (null without 87B in force)

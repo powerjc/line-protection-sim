@@ -1,13 +1,13 @@
 # Line Protection Simulator — Specification
 
-**Status:** feature-complete for a first public release (2026-10-29): distance protection (V1–V2), pilot schemes, line current differential, 25 guided lessons. Next: target-audience testing, then public GitHub.
+**Status:** public on GitHub Pages and with colleagues for feedback (2026-11-22): distance protection (V1–V2), pilot schemes, line and bus differential, instruments (Foundations), Station and Bay views, CT saturation, 45 guided lessons with walkthroughs, screen tour and Explain mode. Next: feedback from colleagues.
 **Purpose:** Web-based training tool for transmission line protection: distance zone reach and coordination, pilot schemes, source strength, ground faults, fault resistance, infeed, load, and line current differential. Pure client-side; all simulation math runs in the browser.
 
 The sections after § Status are the design record, written as each version was planned and built; later versions supersede details in earlier ones (e.g. V2 replaced V1's geometric impedance model with a phasor solver).
 
 ---
 
-## Status & backlog (as of 2026-11-20)
+## Status & backlog (as of 2026-11-22)
 
 **Built**
 - **Tabs (by scale):** Coordination (the system, default), Station (one substation), Bay (one terminal), Fault Study, Differential (with the 87L module)
@@ -19,16 +19,19 @@ The sections after § Status are the design record, written as each version was 
 - **Engine:** three-phase phasor network solver (Z1/Z0, source SIR, infeed, prefault load, 3Ø / A–G faults with Rf); instrument layer between solver and relays (CT polarity, ratio-setting error, VT fuse); relays measure through a phase selector and ground (k0) / phase loops with memory polarization (forward zones include Z = 0); loss-of-potential logic; discrete-event clearing with pilot schemes (DCB, POTT, DCUB), 87L and 87B; no-fault runs (verdicts secure / misoperation)
 - **Progressive disclosure:** seven distance feature toggles behind three learner levels (Basic / Intermediate / Advanced), all off by default; two protection modules (87L, 87B) no level switches. With a toggle off the app behaves exactly as before it existed. The Bay tab and consequences summary are always on (schema v15 retired their flags)
 - **First run and lesson paths** (paths built 2026-11-20): the welcome card asks *Which describes you?* and offers *Start the path* or *Skip ahead*. Each audience has a path through the lessons (`PATHS` in `lessons.js`), and ◀ / ▶ in a lesson follow it, so an entry lesson steps back along the path instead of into another track's last lesson; a lesson opened from the menu off the path keeps menu order. *Learning protection*: all of Foundations, then the protection tracks in order, Why protection matters last (skip ahead to *Zone 1*). *Around protection* (14 lessons): six Foundations lessons (cannot see the line, CTs, direction, a phasor takes a cycle, Z = V/I, trip vs open breaker), three protection basics (Zone 1, Zone 2 by time, remote backup), then the five Why lessons (skip ahead to *What a fault costs*). Reopen from Lessons
-- **Lessons:** 43 in ten tracks (the two bus differential lessons open on the Station tab) (Foundations, Why protection matters, Basics, Coordination, Pilot schemes, Sources & phasors, Ground faults & Rf, Tapped lines, Current differential, Bus differential); every Coordination and Bay lesson's outcome (and a Bay lesson's measured Z and direction) and every "Try this" claim is checked by the test suite
+- **Lessons:** 45 in ten tracks (the three bus differential lessons open on the Station tab) (Foundations, Why protection matters, Basics, Coordination, Pilot schemes, Sources & phasors, Ground faults & Rf, Tapped lines, Current differential, Bus differential); every Coordination and Bay lesson's outcome (and a Bay lesson's measured Z and direction) and every "Try this" claim is checked by the test suite
 - **Line tap** (V4 step 1): unprotected load tap on A–B (Advanced level); *Tapped lines* track
-- **Quality:** config schema v15 with migrations from v1; 176 Vitest tests
+- **Quality:** config schema v15 with migrations from v1; 189 Vitest tests
 - **Deploy:** GitHub Pages (CI: tests, build, deploy); Docker image (unprivileged nginx) behind the host's nginx (§ Deployment)
 
 - **The channel in the trip path** (V3 phase 2, built 2026-11-20): clearing-time breakdown (relay + channel + delay + breaker) in the consequences details; 87L channel path presets (switched: +1 / +3 ms one way → alignment error); lessons *Latency is a setting*, *A switched path can trip 87L*
 
+- **CT saturation** (V5 phase 5 / V6, built 2026-11-22), § Foundations → CT saturation
+
 **Next**
-1. **V6 step 2, *The CT is the boundary*:** a fault between a breaker and its CTs (inside both zones), and the blind spot when both zones share one CT.
-2. **CT saturation** (V5 phase 5 / V6): the secondary trace bends; phasor error into distance, 87L and 87B (the external-fault bus trip). Later: high-impedance bus differential as a comparison.
+- Colleague feedback. Candidates: high-impedance bus differential as a comparison to the saturation lesson; an 87L through-fault saturation lesson (the engine already does it).
+
+**Cut (2026-11-22):** V6 step 2, *The CT is the boundary* (a fault between a breaker and its CTs; the shared-CT blind spot).
 
 **On hold: digital substation** (V3 phase 3, § V3 → D, held 2026-11-20). The separate IEC 61850 simulator project focuses on SV and GOOSE; decide first how much belongs here (an abstract "SV stream lost" / "GOOSE not received" link state with its protection consequence) and how much there (the messages themselves). See `docs/iec61850-interface.md`.
 
@@ -43,11 +46,11 @@ Design (2026-11-20): registry-based rather than a fixed step list. Each panel wr
 
 **Before / during audience testing**
 - **Coordination complexity** (raised 2026-11-11; eased 2026-11-19 by moving the chain to the Bay tab and collapsing consequences to one line). Remaining options, cheapest first:
-  1. **Guided orientation (spotlight tour):** a step-through that dims everything except one area, with a callout that says what it is, how to read it, and what to look for, and drives the sim as it goes. Data-driven like lessons: steps of `{ target, title, text, action }`, with `data-tour` anchors on the panels; skippable, keyboard-friendly, scrolls the target into view on phones. Offered from the welcome card and the Lessons menu; one short tour per audience.
+  1. **Guided orientation (spotlight tour):** *built 2026-11-20 as the screen tour, Explain mode and lesson walkthroughs (above).* a step-through that dims everything except one area, with a callout that says what it is, how to read it, and what to look for, and drives the sim as it goes. Data-driven like lessons: steps of `{ target, title, text, action }`, with `data-tour` anchors on the panels; skippable, keyboard-friendly, scrolls the target into view on phones. Offered from the welcome card and the Lessons menu; one short tour per audience.
   2. **Lesson focus mode:** a lesson declares the panels it needs; the rest collapse to a one-line header.
   3. **Separation:** split the Coordination tab into views. Bigger change: lessons and the tour must switch views, and part of the value is seeing cause and effect on one screen.
   - Recommendation: watch the first test sessions before choosing; where people get lost decides it.
-- Fault Study vs Coordination overlap (the R-X plane could move into Coordination); folding the Differential tab into Fault Study as a second mode, to keep the tab bar short
+- Fault Study vs Coordination overlap, and folding the Differential tab into Fault Study: **decided 2026-11-22, leave as is**
 
 **Backlog**
 - V3: backup clearing limit as a second marker on the fault-time meter (thermal / through-fault limit, commonly ~1 s for backup overcurrent; distinct from the CCT). Lesson 8 (*Commissioning catches it*) is largely covered by *Direction is part of the measurement* and *One reversed CT trips the bus*
@@ -604,7 +607,14 @@ Today `solveFault` passes the solver's primary V/I straight into `measure()`. Th
    - **Forward zones include Z = 0** with a forward memory direction (a memory-polarized mho includes the origin). Changed no existing result.
    - **LOP logic** (Foundations module, on by default; `scenario.lopOff: [rid]` disables it, chain relay card "LOP blocking"): the voltage-start signature (voltage gone, current unchanged) asserts LOP → distance blocked, alarm event (`kind: 'lop'`), shown on the bay relay, the chain and an oscillography row. Without it, Zone 1 trips on load at 17 ms.
    - Lesson *Loss of potential is not a power-system fault* (0.7): all three fuses at 21-AB on a loaded line → secure; LOP off → misoperation; phase A only → Z ≈ 118 Ω (outside the zones), LOP still asserts; a real fault with the fuse already gone → 21-AB blind, backup at 367 ms.
-5. **Later:** CT saturation (bends the secondary trace; phasor error into the engine and 87L).
+5. **CT saturation** (built 2026-11-22, `lib/ctsat.js`):
+   - **Core model:** ideal knee. The flux is ∫ i_s dt through the burden; below the knee the secondary is the primary, at the knee it collapses to zero until the primary reverses. Driven by the primary wave with its DC offset (τ from the line X/R); the flux starts at the prefault steady state. Size K = the symmetrical current (× rated) the CT carries before saturating. Choices (`scenario.ctSat: { ctId: 'undersized' | 'severe' }`, CT ids as other instrument faults): *Undersized* K = 4 (saturates on the DC offset only), *Badly undersized* K = 1 (saturates on the fault current itself). Real CTs carry 20× or more and saturate at 20–40×; this network's faults are 1.5–3× rated, so the sizes are scaled and named by what they do.
+   - **Inception at a phase-A voltage zero** (`ctsat.INCEPTION`, also the oscillography's): the worst case for offset, so phase A, the phase every panel shows, carries the full offset.
+   - **Relay estimate:** a mimic (DC-removal) filter tuned to the line X/R, then the one-cycle DFT (`relayPhasor`; also the oscillography's estimate, which now settles cleanly despite the full offset).
+   - **Into the engine:** with a CT set to saturate, the engine re-measures every quarter cycle while the fault is on (`ctTick`, up to 30 cycles; none without ctSat, so every other run is unchanged). The CT's gain = relay estimate of the saturated secondary ÷ that of a perfect CT, evaluated a full cycle after the latest change in primary current (the engine's usual look-ahead: a zone decided at t is confirmed one relay time later), and 1 until the core has actually saturated. Phase A's gain stands for all three phases (per-phase gains would invent residual current, which real relays can also see, but which muddies every loop). It multiplies the CT's current in `senseI`, so distance, 87L and 87B all see it; snapshots carry `ctGain`. Events: the standing condition at t = 0, *saturated N ms into the fault* (listed before what it causes) and *out of saturation*.
+   - **Display:** Bay CT secondary from the core model (chopped), the dashed "true magnitude" = a perfect CT; the CT card's live reading says how much the relay sees; Station 87B CT secondaries drawn from the primary with DC offset and saturation (the sum shows the false differential); the 87B card has a Saturation choice per CT.
+   - **Limits:** listed for users in README § Model notes and limits → CT saturation (ideal knee, no remanence, burden folded into K, scaled sizes, worst-case inception, phase A for all phases, no saturation detectors or 87B external-fault logic).
+   - **Lessons:** *A CT can run out of core* (Foundations, Bay: 70% fault, undersized CT → relay sees 86% leading 16°, Z 16.3 Ω∠59°, Zone 1 at 50 ms instead of 17; badly undersized → Zone 2 at 342 ms; close in at 10% Zone 1 still trips) and *Saturation on an external fault* (Bus differential, Station: strong source, short X–A, fault 5% out on B–Y, 52-BY's 87B CT badly undersized → 87B trips 52-BA at 21 ms, miscoordination; undersized or a 70% slope restrain; a bus fault still trips).
 
 #### Open questions
 - Typical base values (138 kV, 1200:5, 1200:1) and sampling rate: confirm from published, vendor-neutral sources when the lessons are written.
@@ -623,7 +633,7 @@ Today `solveFault` passes the solver's primary V/I straight into `measure()`. Th
 - **Failures:** CT reversed on one feeder (through-fault → bus trip), ratio mismatch (false differential on load and through-faults), later saturation (the classic external-fault misoperation and why bus differential needs restraint or high-impedance designs).
 - **Gating:** its own module (like 87L), no learner level switches it.
 
-**Draft lessons:** *What goes in must come out (bus edition)*; *One reversed CT trips the bus*; *The CT is the boundary* (fault between breaker and CT); later *Saturation on an external fault*.
+**Draft lessons:** *What goes in must come out (bus edition)*; *One reversed CT trips the bus*; ~~*The CT is the boundary*~~ (cut 2026-11-22); *Saturation on an external fault* (next).
 
 **As built (step 1, 2026-11-19)** — defaults chosen for the open questions: low-impedance percentage only; shown on the Bay tab and the Coordination one-line.
 - `lib/busdiff.js`: `busZone()` (module 'busdiff' + Adjacent lines, bus B not a source — with infeed on, B's source has no breaker in this model, so the zone is off), `busDiffElement()` per phase Iop = |Σ I into the bus|, Ires = Σ|I|, defaults pickup 0.2 pu (≈ 0.8 kA), slope 50% (schema v14: `features.busdiff`, `busdiff: { pickupPu, slopePct }`, ⚙ Modules).
@@ -642,7 +652,7 @@ Today `solveFault` passes the solver's primary V/I straight into `measure()`. Th
 
 **ANSI symbols (2026-11-19):** the Bay, bus and Coordination drawings use ANSI-style one-line symbols (`Symbols.jsx`): CTs as a half-loop on the conductor with polarity marks on the primary side and the secondary lead (line-relay CTs marked toward the bus, 87B CTs toward the line), VTs as coils (no polarity marks: on a one-line they matter for the CT's direction, not the VT's), breakers as squares. A polarity error is drawn as the CT installed correctly with its leads crossed at a terminal block in front of the relay (the usual real cause). No legend (decided).
 
-**Next (step 2):** *The CT is the boundary*: a fault between a breaker and its CTs (new fault location at the breaker), inside both zones thanks to the overlap; the blind spot when both zones use the same CT. Then saturation on an external fault (V5 phase 5), and possibly a high-impedance comparison.
+**Built 2026-11-22:** *Saturation on an external fault* (see Foundations → CT saturation). **Possible next:** a high-impedance comparison. (*The CT is the boundary*, a fault between a breaker and its CTs, was cut 2026-11-22.)
 
 ---
 

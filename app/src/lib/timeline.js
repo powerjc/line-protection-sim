@@ -13,7 +13,8 @@
 
 import { buildNetwork, faultPosition, relayGeometry, describeLocation, activeTap, isTapFault, EPS } from './network'
 import { solveFault, faultSpec, FAULT_TYPES } from './solver'
-import { instrumentFaults, describeInstrumentFaults } from './instruments'
+import { instrumentFaults, describeInstrumentFaults, ctSatK } from './instruments'
+import { ctGain as ctGainAt } from './ctsat'
 import { busZone, busDiffElement } from './busdiff'
 import { diffElement, DEFAULT_DIFF, alignmentError } from './differential'
 import { zoneAsserts, relayShape, zoneDelayS, ctiS, activeZones, isReverse, zoneLabel } from './protection'
@@ -67,6 +68,47 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   const lopOn = true
   const lopOff = new Set(scenario.lopOff ?? [])
   const lop = {}
+
+  // CT saturation (lib/ctsat.js): a CT that can saturate is re-measured every
+  // quarter cycle while the fault is on. Its relay sees the one-cycle DFT of the
+  // chopped secondary, as a complex gain on its current; zones, 87L and 87B
+  // follow. Without ctSat there are no ticks and nothing changes.
+  const satIds = noFault ? [] : Object.keys(inst.ctSat ?? {}).filter(id => ctSatK(inst.ctSat[id]))
+  const satCtx = { f: freqHz, tau: Math.tan((config.lineAngleDeg * Math.PI) / 180) / (2 * Math.PI * freqHz), tFault: 0, tStart: -PREFAULT_CYCLES / freqHz }
+  const hist = {}     // breaker id → primary current segments [{ t0, I }]
+  const satNow = {}   // CT id → saturating (for the onset / recovery events)
+  const satAt = {}    // CT id → when its core first saturated
+  const T_SAT_TICK = 1 / (4 * freqHz)
+  const T_SAT_END = 30 / freqHz
+  let curInst = instNow
+  const brkOf = id => id.replace(/^bus:/, '')
+  const instAt = t => {
+    if (!satIds.length) return instNow
+    const ctGain = {}
+    for (const id of satIds) {
+      const segs = hist[brkOf(id)]
+      // Phase A stands for all three (it carries the full offset: ctsat.INCEPTION).
+      // Per-phase gains would also invent residual current, which real relays
+      // can see too but which would muddy every loop here
+      const r = segs?.length ? ctGainAt(segs, ctSatK(inst.ctSat[id]), t, satCtx) : null
+      ctGain[id] = r ? [r.g, r.g, r.g] : null
+      if (r?.tSat != null && r.tSat >= 0 && satAt[id] == null) satAt[id] = r.tSat
+    }
+    return { ...instNow, ctGain }
+  }
+  const record = (t, relays) => {
+    for (const id of satIds) {
+      const rid = brkOf(id)
+      const I = relays[rid]?.prim?.Iabc
+      if (!I) continue
+      const segs = (hist[rid] ??= [])
+      const last = segs[segs.length - 1]
+      // A new segment only when the primary current changed (re-measuring doesn't change it)
+      if (last && I.every((x, p) => Math.abs(x.re - last.I[p].re) < 1e-12 && Math.abs(x.im - last.I[p].im) < 1e-12)) continue
+      if (last && Math.abs(last.t0 - t) < 1e-12) segs[segs.length - 1] = { t0: t, I }
+      else segs.push({ t0: t, I })
+    }
+  }
 
   const geo = Object.fromEntries(relayIds.map(id => [id, relayGeometry(net, config.relays[id])]))
   const fwd = Object.fromEntries(relayIds.map(id => [id, noFault ? NaN : (pf - geo[id].pos) * geo[id].dir]))
@@ -148,6 +190,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
     faultEnergized: faultOn && clearedAt === null && !noFault,
     lop: { ...lop },
     faultI,
+    ...(curInst.ctGain ? { ctGain: curInst.ctGain } : {}),
   })
   const log = (t, kind, text, extra = {}) => events.push({ t, kind, text, ...extra, state: snapshot() })
 
@@ -197,7 +240,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
   }
 
   function update87B(t) {
-    const el = busDiffElement(meas, bz, inst, config.busdiff)
+    const el = busDiffElement(meas, bz, curInst, config.busdiff)
     if (el.op === bus87.op) return
     bus87.op = el.op
     bus87.token++
@@ -233,9 +276,33 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
     }
   }
 
+  // Saturation onset and recovery, as the relay sees them (worst phase)
+  function logSaturation(t) {
+    for (const id of satIds) {
+      const g = curInst.ctGain?.[id]
+      if (!g) continue
+      const worst = g.reduce((w, x) => (Math.hypot(x.re, x.im) < Math.hypot(w.re, w.im) ? x : w))
+      const mag = Math.hypot(worst.re, worst.im)
+      const name = id.startsWith('bus:') ? `the 87B CT on 52-${brkOf(id)}` : `21-${id}`
+      // Reported once the core has actually saturated (the relay's estimate looks a cycle ahead)
+      if (!satNow[id] && mag < 0.9 && satAt[id] != null && t >= satAt[id] - EPS) {
+        satNow[id] = true
+        const lead = Math.round((Math.atan2(worst.im, worst.re) * 180) / Math.PI)
+        log(t, 'instrument', `CT at ${name} saturated ${(satAt[id] * 1000).toFixed(1)} ms into the fault — the relay sees ${Math.round(mag * 100)}% of the current${lead > 2 ? `, leading by ${lead}°` : ''}`, { rid: brkOf(id), ctSat: true })
+      } else if (satNow[id] && mag > 0.97) {
+        satNow[id] = false
+        log(t, 'instrument', `CT at ${name} out of saturation — the relay sees the full current again`, { rid: brkOf(id), ctSat: true })
+      }
+    }
+  }
+
   // Re-solve the phasor network and update zone pickups from the measurements.
   function evaluate(t) {
-    const sol = solveFault(net, config, loc, breakers, fault, instNow)
+    // A CT that can saturate needs this instant's primary current first (which
+    // no instrument changes), then the measurement through its core
+    if (satIds.length) record(t, solveFault(net, config, loc, breakers, fault, instNow).relays)
+    curInst = instAt(t)
+    const sol = solveFault(net, config, loc, breakers, fault, curInst)
     meas = sol.relays
     faultI = sol.faultI
     // Live sources draw as source → fault paths on the one-line
@@ -295,6 +362,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
 
   // Prefault: healthy network (no load — every bus at E = 1∠0°, no current)
   meas = solveFault(net, config, null, breakers, {}, instPre).relays
+  record(-PREFAULT_CYCLES / freqHz, meas)
   log(-PREFAULT_CYCLES / freqHz, 'prefault', config.features?.load && config.loadAngleDeg
     ? `Prefault: system healthy, carrying load (sources ${config.loadAngleDeg}° apart)`
     : 'Prefault: system healthy, no load — all buses at 1∠0° pu')
@@ -321,6 +389,7 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
 
 
   if (tapFault === 'tapLV') schedule(tap.clearCycles / freqHz, 'tapClear', {})
+  if (satIds.length) schedule(T_SAT_TICK, 'ctTick', {})
 
   if (diffOn && diffCh === 'out') {
     log(0, 'channel', `87L channel ${net.lines[DIFF_LINE].from}–${net.lines[DIFF_LINE].to} out of service — differential blocked, distance only`)
@@ -393,6 +462,14 @@ export function simulateFault(config, loc, scenario = {}, spec = {}) {
     } else if (e.kind === 'trip87B') {
       if (e.token !== bus87.token || !bus87.op) continue
       for (const rid of bz.feeders) if (!tripped[rid]) trip(e.t, rid, 0, '87B', `bus ${bz.bus} differential`)
+    } else if (e.kind === 'ctTick') {
+      // The saturation event goes before whatever it causes in the same instant
+      const at = events.length
+      evaluate(e.t)
+      const caused = events.splice(at)
+      logSaturation(e.t)
+      events.push(...caused)
+      if (e.t + T_SAT_TICK <= T_SAT_END + EPS) schedule(e.t + T_SAT_TICK, 'ctTick', {})
     } else if (e.kind === 'lockout') {
       log(e.t, 'channel', `Channel ${e.line} DCUB unblock window closes — pilot locked out, step distance only`)
     } else if (e.kind === 'bkrOpen') {

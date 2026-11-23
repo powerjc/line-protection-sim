@@ -130,6 +130,29 @@ export const LESSONS = [
     takeaway: 'Relays work on numbers, not waves: samples, then phasor estimates. Filtering a clean phasor out of a fault waveform takes about a cycle, which is a large part of why even an “instantaneous” zone takes time. It is also the bridge to digital substations, where those samples arrive as network messages.',
   },
   {
+    id: 'f-saturation',
+    track: 'Foundations',
+    title: 'A CT can run out of core',
+    tab: 'bay',
+    setup: foundations,
+    fault: { kind: 'line', line: 'AB', frac: 0.7 },
+    scenario: { ctSat: { AB: 'undersized' } },
+    expect: { verdict: 'selective', measured: { rid: 'AB', zOhm: 14, dir: 1 } },
+    intro: 'A CT is a transformer with an iron core, and the core can only carry so much flux. Past its knee it saturates, and the secondary current collapses for part of each cycle. How much flux a fault needs depends on the current, the burden (the leads and the relay), and the DC offset at inception, which pushes the flux the same way every cycle. Here 21-AB’s CT is undersized for its burden: it saturates on the offset. (Real CTs carry 20× their rating or more; the sizes here are scaled to this network’s fault currents.) The fault starts at a phase-A voltage zero, the worst case for offset.',
+    watch: [
+      { text: 'Step to the fault at 70%: 1.81 kA on the line, and the relay reads it all. Z = 14.0 Ω, inside Zone 1 (16 Ω).', show: ['bay.relayview', 'bay.controls'], at: 0 },
+      { text: 'In Oscillography choose Fault inception. Phase A starts with a full DC offset; about 9 ms in, its CT secondary collapses for part of each cycle: the core has saturated. The relay’s estimate (black) falls below the true magnitude (dashed).', show: ['bay.osc'], at: 0.013 },
+      { text: 'The relay now sees 86% of the current (1.55 kA), leading by 16°. Z reads 16.3 Ω at 59°: outside Zone 1, so Zone 1 doesn’t pick up.', show: ['bay.relayview', 'bay.chain.ct'], at: 0.013 },
+      { text: 'As the offset decays the CT comes out of saturation (46 ms). Zone 1 picks up and trips at 50 ms instead of 17 ms, and the fault clears at 100 ms instead of 67 ms.', show: ['bay.events'], at: 'end' },
+    ],
+    tryIt: [
+      { text: 'In the CT card set Saturation to Badly undersized: the CT now saturates on the fault current itself, for as long as the fault lasts. The relay sees 24% of the current, Zone 1 never picks up, and Zone 2 trips at 342 ms.', show: ['bay.chain.ct'] },
+      { text: 'Keep it badly undersized and move the fault to 10%: the relay sees only 22% of the current and reads 9.2 Ω instead of 2 Ω, but that is still inside Zone 1, which trips at 17 ms. Saturation hurts most where the margin is smallest.', show: ['bay.fault', 'bay.relayview'] },
+      { text: 'Set Saturation back to None and replay the fault at 70%: Zone 1 at 17 ms.', show: ['bay.chain.ct', 'bay.fault'] },
+    ],
+    takeaway: 'A CT reproduces its primary only while its core stays below the knee. The DC offset at inception can saturate a CT that carries the fault current itself comfortably, a few milliseconds in, until the offset decays. While it is saturated the relay sees less current, leading in angle: a distance relay underreaches and slows down, and a differential relay sees differential that isn’t there (see the bus differential track). That is why CTs are sized for the fault current, its X/R and the burden (IEEE C37.110), and why relays add saturation detection.',
+  },
+  {
     id: 'f-vt',
     track: 'Foundations',
     title: 'VTs create the voltage view',
@@ -933,6 +956,34 @@ export const LESSONS = [
       { text: 'Pickup back to 0.20 pu, move the fault onto bus B, inside the zone. The reversed CT now subtracts: operate is 2.19 kA against about 5.2 kA of restraint (42%), under the 50% slope. 87B fails to trip a real bus fault, and remote Zone 2 clears it at 367 ms.', show: ['station.fault', 'station.bus87'] },
     ],
     takeaway: 'A reversed bus CT shows itself under load long before a fault: a standing differential of twice the load current through that feeder. That is what in/out load checks at commissioning, and a differential-current alarm in service, look for. Miss it, and the bus trips for the next external fault (or on load, once the load grows) and can fail to trip for a real bus fault.',
+  },
+  {
+    id: 'bus-saturation',
+    track: 'Bus differential',
+    title: 'Saturation on an external fault',
+    tab: 'station',
+    station: 'B',
+    setup: cfg => {
+      busdiff(cfg)
+      // A strong source behind A: more current through bus B for a fault just past it
+      cfg.network.buses.find(b => b.id === 'X').sir = 0.1
+      cfg.network.lines.find(l => l.id === 'XA').length = 0.3
+    },
+    fault: { kind: 'line', line: 'BY', frac: 0.05 },
+    scenario: { ctSat: { 'bus:BY': 'severe' } },
+    expect: { verdict: 'miscoordination', measured: { rid: 'BA', zOhm: 0.6, dir: -1 } },
+    intro: 'A fault just past bus B on line B–Y, with a strong source behind A: 2.79 kA flows in through 52-BA and out through 52-BY. Both 87B CTs see it and their currents cancel, as long as both CTs reproduce it. The one on 52-BY, the feeder carrying the fault current out, is badly undersized: it saturates on the fault current itself.',
+    watch: [
+      { text: 'Step to the fault. In the 87B card, 2.79 kA comes in from line A–B and 2.79 kA goes out to B–Y: operate 0, restrain.', show: ['station.bus87', 'station.controls'], at: 0 },
+      { text: '4 ms in, the 87B CT on 52-BY saturates. 87B now hears only 0.61 kA leaving (22%), so the currents no longer cancel: operate 2.21 kA against 3.39 kA of restraint, 65%, above the 50% slope. On the oscillography the 52-BY wave is chopped and the sum is no longer flat.', show: ['station.bus87', 'station.osc'], at: 0.005 },
+      { text: '87B trips 52-BA at 21 ms. 52-BY trips anyway for its own line fault, so bus B goes dark and line A–B is lost for a fault on line B–Y: a miscoordination.', show: ['station.events', 'station.drawing'], at: 'end' },
+    ],
+    tryIt: [
+      { text: 'In the 87B card, set 52-BY’s saturation to Undersized: it saturates only on the offset and less deeply (87B hears 54%): 38% of restraint, under the slope. 87B restrains.', show: ['station.bus87'] },
+      { text: 'Back to Badly undersized, raise ⚙ Settings → Modules → 87B slope to 70%: the same 65% now restrains. Slope buys security against saturation, at the cost of sensitivity to bus faults.', show: ['header.settings'] },
+      { text: 'Slope back to 50%, move the fault onto bus B: saturated CT and all, operate is 93% of restraint and 87B trips at 17 ms. Saturation threatens security on external faults; on a bus fault the currents still add up.', show: ['station.fault', 'station.bus87'] },
+    ],
+    takeaway: 'On an external fault, the CT on the faulted feeder carries the most current and saturates first, and a bus differential reads the current it stops reporting as differential. Percentage restraint (slope) buys security; modern low-impedance bus relays add external-fault detection, which catches the first few milliseconds before saturation and raises the slope, and high-impedance bus differential takes a different approach, a stabilizing resistor that a saturated CT short-circuits.',
   },
 
 

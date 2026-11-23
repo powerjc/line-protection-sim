@@ -3,7 +3,7 @@ import { abs } from '../lib/complex'
 import { relayColor } from '../lib/colors'
 import { zoneLabel } from '../lib/protection'
 import { useExplain } from './Tour'
-import { CT_SETTINGS, VT_SETTINGS, BAY_BASE, baseAmps } from '../lib/instruments'
+import { CT_SETTINGS, VT_SETTINGS, BAY_BASE, baseAmps, CT_SAT_OPTIONS, satShare } from '../lib/instruments'
 
 // Protection chain for one terminal: every link between the fault and the
 // breaker opening, each with its live state and the failure you can inject.
@@ -96,6 +96,8 @@ export default function ChainView({ config, sim, state, coord, rid: ridProp, onR
   const otherAtBus = relayIds.filter(id => id !== rid && config.relays[id].bus === r.bus)
 
   const ctRev = sc.ctReversed?.[rid] ?? ''
+  const ctSat = sc.ctSat?.[rid] ?? ''
+  const satNow = satShare(state, rid)
   const ratio = sc.ratioError?.[rid] ?? {}
   const fuse = sc.vtFuse?.[rid] ?? ''
   const setRatio = (k, v) => {
@@ -109,8 +111,8 @@ export default function ChainView({ config, sim, state, coord, rid: ridProp, onR
     {
       id: 'ct',
       name: 'CT (current)',
-      status: ctRev || (ratio.ct ?? 1) !== 1 ? 'fail' : 'ok',
-      live: inst ? (m ? `Ia ${kA(Iprim)} → ${(Iprim * baseAmps() / BAY_BASE.ctRatio).toFixed(1)} A` : '—')
+      status: ctRev || ctSat || (ratio.ct ?? 1) !== 1 ? 'fail' : 'ok',
+      live: inst ? (m ? `Ia ${kA(Iprim)} → ${(Iprim * baseAmps() / BAY_BASE.ctRatio).toFixed(1)} A${satNow ? ` · saturated: relay sees ${Math.round(satNow.share * 100)}%` : ''}` : '—')
         : carrying && m ? `Ia ${pu(abs(m.I))}` : 'no fault current',
       control: inst ? (
         <div className="flex flex-col gap-1">
@@ -118,9 +120,10 @@ export default function ChainView({ config, sim, state, coord, rid: ridProp, onR
             options={[['', 'Correct'], ['abc', 'Reversed (all)'], ['a', 'Reversed (phase A)']]} />
           <Pick label={`Set ratio (actual ${BAY_BASE.ctLabel})`} value={ratioKey(CT_SETTINGS, ratio.ct ?? 1)}
             onChange={v => setRatio('ct', CT_SETTINGS.find(([l]) => l === v)[1])} options={CT_SETTINGS.map(([l]) => [l, l])} />
+          <Pick label="Saturation" value={ctSat} onChange={v => coord.setInstrument('ctSat', rid, v || null)} options={CT_SAT_OPTIONS} />
         </div>
       ) : null,
-      check: 'Ratio and polarity tests at commissioning; secondary circuit grounded at one point.',
+      check: 'Ratio and polarity tests at commissioning; secondary circuit grounded at one point; CT sized for the fault current, its X/R and the burden (IEEE C37.110).',
     },
     {
       id: 'vt',

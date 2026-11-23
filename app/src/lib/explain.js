@@ -92,7 +92,7 @@ export const EXPLAIN = {
   'station.bus87': {
     title: 'Bus differential',
     text: ctx => (f(ctx, 'busdiff')
-      ? 'What goes in must come out: every 87B CT’s current into the bus, their sum (operate) against the sum of their sizes (restraint). Set a CT’s polarity here to see what a wiring error does. Modelled at bus B only; the other stations point you there.'
+      ? 'What goes in must come out: every 87B CT’s current into the bus, their sum (operate) against the sum of their sizes (restraint). Set a CT’s polarity or saturation here to see what a wiring error or an undersized CT does. Modelled at bus B only; the other stations point you there.'
       : 'A differential zone around bus B. It needs the 87B module and Adjacent lines; on station B the button turns them on, and on the other stations it takes you there.'),
   },
   'station.osc': {
@@ -134,7 +134,7 @@ export const EXPLAIN = {
   'coord.controls': { detail: true, title: 'Playback', text: () => 'Reset, Step back, Play and Step forward through the run, the speed, and the time slider. Step jumps from one event to the next.' },
   'station.controls': { detail: true, title: 'Playback', text: () => 'Reset, Step back, Play and Step forward through the run, the speed, and the time slider. Step jumps from one event to the next.' },
   'bay.controls': { detail: true, title: 'Playback', text: () => 'Reset, Step back, Play and Step forward through the run, the speed, and the time slider. Step jumps from one event to the next.' },
-  'bay.chain.ct': { detail: true, title: 'The CT', text: () => 'The current transformer: its reading on the line and at the relay, its polarity (correct, or leads swapped), and the ratio the relay is set to against the CT installed.' },
+  'bay.chain.ct': { detail: true, title: 'The CT', text: () => 'The current transformer: its reading on the line and at the relay, its polarity (correct, or leads swapped), the ratio the relay is set to against the CT installed, and whether it is sized for the fault (an undersized CT saturates).' },
   'bay.chain.vt': { detail: true, title: 'The VT', text: () => 'The voltage transformer: its reading, its fuse (intact, one phase or all blown), and the ratio the relay is set to against the VT installed.' },
   'bay.chain.relay': { detail: true, title: 'Relay', text: () => 'The relay’s state (watching, picked up, tripped), in or out of service, and loss-of-potential blocking.' },
   'bay.chain.ch': { detail: true, title: 'Channel', text: () => 'The communications channel to the far end for a pilot scheme or 87L: in service, out, lost at the fault, or (87L) a switched, asymmetric path.' },

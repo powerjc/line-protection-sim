@@ -1786,3 +1786,89 @@ describe('screen tour / explain mode', async () => {
     }
   })
 })
+
+describe('CT saturation (ctsat)', async () => {
+  const { simulateCt, kneeFluxPu, RATED_PU, ctGain } = await import('./ctsat')
+  const { C } = await import('./complex')
+  const f = 60, w = 2 * Math.PI * f, dt = 1 / (f * 64)
+  const tau = Math.tan((75 * Math.PI) / 180) / w
+  const ctx = { f, tau, tFault: 0, tStart: -3 / f }
+  const segs = amp => [{ t0: -3 / f, I: [C(0), C(0), C(0)] }, { t0: 0, I: [1, 1, 1].map(() => C(amp * Math.cos(-1.3), amp * Math.sin(-1.3))) }]
+  const L = id => LESSONS.find(l => l.id === id)
+  const setupOf = l => { const cfg = defaultConfig(); l.setup?.(cfg); return coordinationConfig(cfg) }
+  const firstTrip = (run, rid) => run.events.find(e => e.kind === 'trip' && e.rid === rid)
+
+  it('the core reproduces a current below its knee and chops one above it', () => {
+    const knee = kneeFluxPu(2, w)
+    const small = t => Math.SQRT2 * 1.5 * RATED_PU() * Math.sin(w * t)
+    const big = t => Math.SQRT2 * 4 * RATED_PU() * Math.sin(w * t)
+    const lam0 = -Math.SQRT2 * 1.5 * RATED_PU() / w // centered flux of the small sine at t = 0
+    const out = simulateCt(small, knee, 0, 3 / f, dt, lam0)
+    expect(out.firstSat).toBeNull()
+    for (let k = 0; k < out.length; k += 7) expect(out[k]).toBeCloseTo(small(k * dt), 9)
+    const sat = simulateCt(big, knee, 0, 3 / f, dt, -Math.SQRT2 * 4 * RATED_PU() / w)
+    expect(sat.firstSat).not.toBeNull()
+    expect([...sat].some((v, k) => v === 0 && Math.abs(big(k * dt)) > RATED_PU())).toBe(true)
+  })
+
+  it('a well-sized CT is perfect; the offset saturates an undersized one, which recovers as it decays', () => {
+    const I = 1.7 * RATED_PU()
+    expect(ctGain(segs(I), 40, 0.05, ctx).g.re).toBeCloseTo(1, 9)
+    const early = ctGain(segs(I), 4, 0.02, ctx)
+    expect(early.tSat).toBeGreaterThan(0)
+    expect(Math.hypot(early.g.re, early.g.im)).toBeLessThan(0.95)
+    expect(Math.atan2(early.g.im, early.g.re)).toBeGreaterThan(0) // the relay sees it leading
+    const late = ctGain(segs(I), 4, 0.15, ctx)
+    expect(Math.hypot(late.g.re, late.g.im)).toBeCloseTo(1, 1)
+    // Perfect until the core actually saturates
+    expect(ctGain(segs(I), 4, early.tSat - 0.001, ctx).g.re).toBe(1)
+  })
+
+  it('without ctSat nothing changes: no re-measuring, no gains in the snapshots', () => {
+    const l = L('f-cannot-see')
+    const a = simulateFault(setupOf(l), l.fault, {})
+    const b = simulateFault(setupOf(l), l.fault, { ctSat: {} })
+    expect(b.events.map(e => e.text)).toEqual(a.events.map(e => e.text))
+    expect(b.events.some(e => e.state.ctGain)).toBe(false)
+  })
+
+  it('f-saturation: Zone 1 waits for the CT; badly undersized never reaches Zone 1; close in it still does', () => {
+    const l = L('f-saturation')
+    const run = simulateFault(setupOf(l), l.fault, l.scenario)
+    expect(firstTrip(run, 'AB').zid).toBe(1)
+    expect(firstTrip(run, 'AB').t).toBeCloseTo(0.05, 3)
+    expect(run.events.some(e => e.ctSat && /saturated/.test(e.text))).toBe(true)
+    const severe = simulateFault(setupOf(l), l.fault, { ctSat: { AB: 'severe' } })
+    expect(firstTrip(severe, 'AB').zid).toBe(2)
+    expect(firstTrip(severe, 'AB').t).toBeCloseTo(0.3417, 3)
+    const close = simulateFault(setupOf(l), { kind: 'line', line: 'AB', frac: 0.1 }, { ctSat: { AB: 'severe' } })
+    expect(firstTrip(close, 'AB').zid).toBe(1)
+    expect(firstTrip(close, 'AB').t).toBeCloseTo(1 / 60, 3)
+    expect(firstTrip(simulateFault(setupOf(l), l.fault, {}), 'AB').t).toBeCloseTo(1 / 60, 3)
+  })
+
+  it('bus-saturation: undersized or a 70% slope restrains; a bus fault still trips', () => {
+    const l = L('bus-saturation')
+    const run = simulateFault(setupOf(l), l.fault, l.scenario)
+    expect(firstTrip(run, 'BA').logic).toBe('87B')
+    expect(simulateFault(setupOf(l), l.fault, { ctSat: { 'bus:BY': 'undersized' } }).outcome.verdict).toBe('selective')
+    const steep = setupOf(l); steep.busdiff = { ...steep.busdiff, slopePct: 70 }
+    expect(simulateFault(steep, l.fault, l.scenario).outcome.verdict).toBe('selective')
+    const bus = simulateFault(setupOf(l), { kind: 'bus', bus: 'B' }, l.scenario)
+    expect(firstTrip(bus, 'BA').logic).toBe('87B')
+    expect(firstTrip(bus, 'BA').t).toBeCloseTo(1 / 60, 3)
+  })
+
+  it('the oscillography chops the saturated secondary and the relay estimate falls below the true magnitude', () => {
+    const l = L('f-saturation')
+    const c = setupOf(l)
+    const sim = simulateFault(c, l.fault, l.scenario)
+    const tr = buildTrace(sim, c, 'AB', l.scenario)
+    const t = 0.02
+    expect(dftAt(tr, 'I', 'sec', 0, t)).toBeLessThan(0.97 * phasorRms(tr, 'I', 'sec', 0, t))
+    const ts = Array.from({ length: 200 }, (_, k) => 0.005 + k * 0.0001)
+    expect(ts.some(x => valueAt(tr, 'I', 'sec', 0, x) === 0 && Math.abs(valueAt(tr, 'I', 'prim', 0, x)) > 500)).toBe(true)
+    // Before the fault: secondary = primary / ratio
+    expect(valueAt(tr, 'I', 'sec', 0, -0.03)).toBeCloseTo(valueAt(tr, 'I', 'prim', 0, -0.03) / 240, 6)
+  })
+})

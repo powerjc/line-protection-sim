@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { activeZones, zoneLabel } from '../lib/protection'
 import { buildTrace, valueAt, sampleTimes, dftAt, phasorRms, stationTrace, busAt, SAMPLES_PER_CYCLE } from '../lib/waveforms'
-import { baseAmps, BAY_BASE } from '../lib/instruments'
+import { baseAmps } from '../lib/instruments'
+import { INCEPTION } from '../lib/ctsat'
 import { relayColor } from '../lib/colors'
 
 // An event report for one terminal, on one time axis: what is on the line,
@@ -79,7 +80,7 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
     if (bus && !showOp) {
       // Each feeder's current into the bus (phase A, primary) and their sum
       const w = trace.w
-      const inst = (I, t) => Math.SQRT2 * Ib * (I.re * Math.cos(w * t) - I.im * Math.sin(w * t))
+      const inst = (I, t) => Math.SQRT2 * Ib * (I.re * Math.cos(w * t + INCEPTION) - I.im * Math.sin(w * t + INCEPTION))
       const lines = bt.feeders.map((fid, j) => ({
         ys: ts.map((t, n) => (segs[n].into[j]?.[0] ? inst(segs[n].into[j][0], t) : 0)), color: relayColor(fid), w: Math.max(1.2, 3.6 - 1.4 * j), label: `52-${fid}`,
       }))
@@ -91,12 +92,10 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
       out.op = { lines: [{ ys: pick, color: '#9ca3af', dash: '2 3', w: 1 }, { ys: res, color: '#7c3aed', dash: '5 3', w: 1.4 }, { ys: op, color: '#dc2626', w: 2 }],
         max: Math.max(1, ...op, ...res, ...pick) * 1.1, centered: false }
       if (bus) {
-        // Each 87B CT's secondary (phase A, into the bus) and their sum: the differential current
-        const w = trace.w, k = Ib / BAY_BASE.ctRatio
-        const inst = (I, t) => Math.SQRT2 * k * (I.re * Math.cos(w * t) - I.im * Math.sin(w * t))
+        // Each 87B CT's secondary (phase A, into the bus, DC offset and saturation included) and their sum: the differential current
         const lines = bt.zone.feeders.map((fid, j) => ({
           // Wider underneath, narrower on top, so identical waves (a reversed CT on through load) both show
-          ys: ts.map((t, n) => inst(segs[n].el.feeders[j].I[0], t)), color: relayColor(fid), w: Math.max(1.2, 3.6 - 1.4 * j), label: `52-${fid}`,
+          ys: ts.map(t => bt.ctWave[j](t)), color: relayColor(fid), w: Math.max(1.2, 3.6 - 1.4 * j), label: `52-${fid}`,
         }))
         lines.push({ ys: ts.map((_, n) => lines.reduce((sum, l) => sum + l.ys[n], 0)), color: '#111827', w: 2.2, label: 'Σ (differential)' })
         out.busI = { lines, max: Math.max(1e-9, ...lines.flatMap(l => l.ys.map(Math.abs))), centered: true }
@@ -291,7 +290,8 @@ export default function Oscillography({ config, sim, state, scenario, rid, time,
       </div>
       {bus ? <p className="text-[11px] text-gray-400">
         {showOp ? '' : 'Each feeder’s current into the bus, primary (no DC offset drawn). Kirchhoff: with no source at this bus they add up to zero unless the fault is on the bus. '}
-        {showOp && <>Each 87B CT’s secondary as the relay is told it, all measured into the bus (no DC offset drawn). Healthy: the waves cancel and the sum is flat.
+        {showOp && <>Each 87B CT’s secondary as the relay is told it, all measured into the bus. Healthy: the waves cancel and the sum is flat (DC offset included).
+        A saturating CT chops its wave, and the sum is no longer flat.
         A bus fault: they add. A reversed CT: it flips, and the sum appears even on load current. Operate is compared with slope × restraint and the pickup.</>}
       </p> : <p className="text-[11px] text-gray-400">
         On the secondaries: the dots are the relay’s samples; the black line is the phase-A magnitude the relay estimates from its last cycle of samples (shaded),

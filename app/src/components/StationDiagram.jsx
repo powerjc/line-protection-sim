@@ -1,6 +1,6 @@
 import { abs } from '../lib/complex'
 import { relayColor } from '../lib/colors'
-import { baseAmps, BAY_BASE, instrumentFaults } from '../lib/instruments'
+import { baseAmps, BAY_BASE, instrumentFaults, withGains } from '../lib/instruments'
 import { busZone, busDiffElement, busCtId } from '../lib/busdiff'
 import { zoneLabel } from '../lib/protection'
 import { CtSymbol, TerminalBlock } from './Symbols'
@@ -41,7 +41,7 @@ export default function StationDiagram({ config, sim, state, scenario, bus, faul
   const bays = [...feeders.map(rid => ({ rid })), ...(source ? [{ source: true }] : [])]
   const n = bays.length
   const xs = bays.map((_, i) => (n === 1 ? W / 2 : 180 + (i * (W - 400)) / (n - 1)))
-  const el = zone ? busDiffElement(state.meas, zone, instrumentFaults(config, scenario), config.busdiff) : null
+  const el = zone ? busDiffElement(state.meas, zone, withGains(instrumentFaults(config, scenario), state), config.busdiff) : null
   const op = state.bus87?.op
   const tripped87 = zone && zone.feeders.some(id => state.tripped?.[id]?.logic === '87B')
   const ph = el?.phases.reduce((w, p) => (p.Iop > w.Iop ? p : w))
